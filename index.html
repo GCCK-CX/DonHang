@@ -12,7 +12,7 @@
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
@@ -78,7 +78,7 @@
   .tem .big { font-size:1.55em; }
   .tem .nm  { justify-content:flex-start; text-align:left; }
   .tem .qrcell { padding:4px; }
-  .qr-box img, .qr-box canvas { max-width:100%; height:auto; }
+  .qr-box svg { width:100%; height:100%; display:block; }
 
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
@@ -88,7 +88,7 @@
     .card { box-shadow:none !important; border:none !important; }
     .tem-wrap { display:grid !important; grid-template-columns:1fr 1fr !important; gap:6mm !important; }
     .tem { font-size:8.5px; break-inside:avoid; }
-    .tem .qr-box img, .tem .qr-box canvas { width:90px !important; height:90px !important; }
+    .tem .qr-box { width:90px !important; height:90px !important; }
     table.erp thead th { position:static; }
     .print-sheet table { font-size:9px; }
   }
@@ -163,7 +163,7 @@ const cell = (r, L) => (r[colKey(L)] == null ? '' : String(r[colKey(L)]).trim())
 
 // Danh sách công đoạn của 1 dòng BOM, sắp theo thứ tự gia công
 const getSteps = (r) => PROC_COLS
-  .map(([L, label]) => ({ label, n: parseFloat(cell(r, L)) }))
+  .map(([L, label]) => ({ L, label, n: parseFloat(cell(r, L)) }))
   .filter(s => s.n > 0)
   .sort((a, b) => a.n - b.n);
 
@@ -205,14 +205,14 @@ function Logo({ collapsed }) {
 }
 
 function QR({ text, size = 130 }) {
-  const ref = useRef(null);
-  useEffect(() => {
-    const el = ref.current; if (!el) return;
-    el.innerHTML = '';
-    try { new window.QRCode(el, { text, width: size, height: size, correctLevel: window.QRCode.CorrectLevel.M }); }
-    catch (e) { el.textContent = 'QR lỗi'; }
-  }, [text, size]);
-  return <div ref={ref} className="qr-box" style={{ width: size, height: size }} />;
+  const html = useMemo(() => {
+    try {
+      qrcode.stringToBytes = (s) => Array.from(new TextEncoder().encode(s));   // hỗ trợ tiếng Việt (UTF-8)
+      const q = qrcode(0, 'M'); q.addData(text, 'Byte'); q.make();             // tự chọn phiên bản theo độ dài
+      return q.createSvgTag({ cellSize: 4, margin: 0, scalable: true });
+    } catch (e) { return '<span style="font-size:11px">QR lỗi</span>'; }
+  }, [text]);
+  return <div className="qr-box" style={{ width: size, height: size }} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
 // =====================================================================
@@ -810,36 +810,48 @@ function Kanban() {
   const [ver, setVer] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const lsxList = useLsxList(ver);
+  const [input, setInput] = useState('');
   const [lsx, setLsx] = useState('');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [q, setQ] = useState('');
+  const [stage, setStage] = useState('');          // '' = tất cả; còn lại = mã cột công đoạn (vd 'AO')
   const [page, setPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [printing, setPrinting] = useState(false);
   const PAGE = 12;
 
   const load = async (value) => {
-    if (!value) { setRows([]); return; }
-    setLoading(true); setPage(1);
-    try { setRows(await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', value).order('sheet_row'))); }
-    catch (e) { alert('Lỗi tải dữ liệu: ' + e.message); }
+    const v = (value || '').trim();
+    if (!v) { setRows([]); return; }
+    setLoading(true); setPage(1); setStage('');
+    try {
+      let data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', v).order('sheet_row'));
+      if (!data.length) data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').ilike('col_a', `%${v}%`).order('sheet_row'));
+      setRows(data);
+    } catch (e) { alert('Lỗi tải dữ liệu: ' + e.message); }
     setLoading(false);
   };
   useEffect(() => { load(lsx); }, [lsx]);
 
-  const filtered = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter(r => cell(r, 'Q').toLowerCase().includes(s) || cell(r, 'R').toLowerCase().includes(s));
-  }, [rows, q]);
+  const search = () => { const v = input.trim(); if (v === lsx) load(v); else setLsx(v); };   // Enter hoặc bấm Tìm
+
+  // Công đoạn 1 của mỗi chi tiết = công đoạn có số thứ tự nhỏ nhất (thường là số 1)
+  const firstOf = (r) => { const st = getSteps(r); return st.length ? st.filter(s => s.n === st[0].n) : []; };
+  const stageList = useMemo(() => {
+    const m = new Map();
+    rows.forEach(r => firstOf(r).forEach(s => {
+      const o = m.get(s.L) || { L: s.L, label: s.label, count: 0 }; o.count++; m.set(s.L, o);
+    }));
+    return Array.from(m.values()).sort((a, b) => b.count - a.count);
+  }, [rows]);
+  const filtered = useMemo(() => stage ? rows.filter(r => firstOf(r).some(s => s.L === stage)) : rows, [rows, stage]);
 
   const shown = showAll ? filtered : filtered.slice(0, page * PAGE);
 
   const doPrint = () => { setShowAll(true); setPrinting(true); };
   useEffect(() => {
     if (!(printing && showAll)) return;
-    const t = setTimeout(() => { window.print(); setPrinting(false); }, 800);   // chờ QR vẽ xong
+    const t = setTimeout(() => { window.print(); setPrinting(false); }, 800);
     return () => clearTimeout(t);
   }, [printing, showAll]);
   useEffect(() => {
@@ -852,11 +864,10 @@ function Kanban() {
     <div className="space-y-3">
       <div className="no-print card p-3 flex flex-wrap items-center gap-3">
         <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
-        <select value={lsx} onChange={e => setLsx(e.target.value)} className="inp" style={{ minWidth: 200 }}>
-          <option value="">— Chọn LSX —</option>
-          {lsxList.map(l => <option key={l} value={l}>{l}</option>)}
-        </select>
-        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm mã / tên chi tiết…" className="inp" style={{ width: 240 }} />
+        <input list="lsx-kanban-list" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()}
+          placeholder="Nhập lệnh sản xuất rồi nhấn Enter…" className="inp" style={{ width: 280 }} />
+        <datalist id="lsx-kanban-list">{lsxList.map(l => <option key={l} value={l} />)}</datalist>
+        <button className="btn btn-primary" onClick={search}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
         <button className="btn" onClick={() => load(lsx)}><i className="fa-solid fa-rotate"></i> Làm mới</button>
         <button className="btn ml-auto" onClick={() => setImportOpen(true)}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>
         <button className="btn btn-green" onClick={doPrint} disabled={!filtered.length} style={{ opacity: filtered.length ? 1 : .5 }}>
@@ -864,9 +875,21 @@ function Kanban() {
         </button>
       </div>
 
+      {rows.length > 0 && (
+        <div className="no-print card p-3 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-bold text-slate-500 mr-1">Công đoạn 1</span>
+          <button className={'pill ' + (stage === '' ? 'on' : '')} onClick={() => { setStage(''); setPage(1); }}>Tất cả ({rows.length})</button>
+          {stageList.map(s => (
+            <button key={s.L} className={'pill ' + (stage === s.L ? 'on' : '')} onClick={() => { setStage(s.L); setPage(1); }}>
+              {s.label} ({s.count})
+            </button>
+          ))}
+        </div>
+      )}
+
       {loading && <div className="no-print card p-6 text-center text-gray-400">Đang tải…</div>}
-      {!loading && !lsx && <div className="no-print card p-6 text-center text-gray-400">Chọn lệnh sản xuất để hiển thị tem Kanban.</div>}
-      {!loading && lsx && filtered.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không có chi tiết nào.</div>}
+      {!loading && !lsx && <div className="no-print card p-6 text-center text-gray-400">Nhập lệnh sản xuất rồi nhấn Enter để hiển thị tem Kanban.</div>}
+      {!loading && lsx && filtered.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không có tem nào.</div>}
 
       <div className="tem-wrap grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(560px, 1fr))' }}>
         {shown.map(r => <TemKanban key={r.id} r={r} />)}
