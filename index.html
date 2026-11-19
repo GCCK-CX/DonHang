@@ -5,11 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Production Control v2 - ERP</title>
 
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <script src="https://cdn.tailwindcss.com"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 
 <script>
   tailwind.config = {
@@ -17,15 +20,76 @@
   }
 </script>
 <style>
-  body { background-color: #f3f4f6; font-family: sans-serif; }
+  :root { --blue:#1d58a8; --blue-soft:#e6f2fb; --line:#dbe4ee; }
+  html, body, #root { height: 100%; margin: 0; }
+  body { background-color: #eef2f7; font-family: 'Be Vietnam Pro', sans-serif; color:#1e293b; }
   ::-webkit-scrollbar { height: 10px; width: 10px; }
-  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
-  table.data-grid th { position: sticky; top: 0; z-index: 10; }
-  table.data-grid td, table.data-grid th { white-space: nowrap; }
+  ::-webkit-scrollbar-thumb { background: #c3d0e0; border-radius: 6px; }
+
+  /* ---------- Khối / nút / pill dùng chung (kiểu hình 1) ---------- */
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px; box-shadow:0 1px 3px rgba(15,23,42,.06); }
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:7px 13px; border-radius:8px; font-size:12px; font-weight:600;
+         border:1px solid var(--line); background:#fff; color:#1e3a5f; cursor:pointer; white-space:nowrap; transition:.15s; }
+  .btn:hover { background:#f1f7fd; }
+  .btn-primary { background:#2563eb; border-color:#2563eb; color:#fff; } .btn-primary:hover { background:#1d4ed8; }
+  .btn-green   { background:#16a34a; border-color:#16a34a; color:#fff; } .btn-green:hover { background:#15803d; }
+  .btn-red     { background:#dc2626; border-color:#dc2626; color:#fff; } .btn-red:hover { background:#b91c1c; }
+  .inp { border:1px solid #cbd5e1; border-radius:8px; padding:7px 11px; font-size:13px; background:#fff; outline:none; }
+  .inp:focus { border-color:#2563eb; box-shadow:0 0 0 3px rgba(37,99,235,.12); }
+  .pill { padding:5px 14px; border-radius:999px; border:1px solid #c7d7ea; background:#f4f8fd; font-size:12px; font-weight:600; color:#1d58a8; cursor:pointer; }
+  .pill:hover { background:#e6f0fb; }
+  .pill.on { background:#0f172a; border-color:#0f172a; color:#fff; }
+
+  /* ---------- Bảng dữ liệu (kiểu hình 1: header xanh đậm, cột khoá nền vàng nhạt) ---------- */
+  table.erp { border-collapse:separate; border-spacing:0; width:100%; }
+  table.erp thead th { position:sticky; top:0; z-index:10; background:var(--blue); color:#fff; font-size:12px; font-weight:700;
+                       text-align:center; padding:9px 10px; border-right:1px solid rgba(255,255,255,.22); white-space:nowrap; }
+  table.erp thead tr.sub th { top:37px; background:#2a68ba; }
+  table.erp td { padding:6px 10px; font-size:12.5px; border-bottom:1px solid #e6ecf4; border-right:1px solid #f0f3f8; white-space:nowrap; }
+  table.erp tbody tr:hover td { background:#eef6fe; }
+  table.erp td.key { background:#f7edcb; font-weight:600; }
+  table.erp td.ctr { text-align:center; }
+
+  /* ---------- Sidebar ---------- */
+  .sb { width:256px; transition:width .2s ease; }
+  .sb.collapsed { width:74px; }
+  .sb-group { display:flex; align-items:center; gap:10px; padding:10px 18px; margin:10px 10px 2px; border-radius:8px;
+              color:#1d6fb8; font-weight:700; font-size:13px; background:var(--blue-soft); }
+  .sb.collapsed .sb-group { justify-content:center; padding:10px 0; }
+  .sb-item { display:flex; align-items:center; gap:11px; padding:9px 14px 9px 24px; margin:2px 10px; border-radius:8px;
+             font-size:13px; font-weight:500; color:#334155; cursor:pointer; transition:.12s; }
+  .sb-item:hover { background:#eef5fc; color:#1d58a8; }
+  .sb-item.on { background:#dbeafe; color:#1d4ed8; font-weight:700; }
+  .sb-item i { width:18px; text-align:center; font-size:14px; }
+  .sb.collapsed .sb-item { justify-content:center; padding:10px 0; }
+  .sb-badge { margin-left:auto; background:#e0ecf9; color:#1d58a8; font-size:10.5px; font-weight:700; padding:1px 8px; border-radius:999px; }
+  .sb-toggle { display:flex; align-items:center; gap:10px; width:100%; padding:14px 22px; border-top:1px solid #e5ebf3; color:#334155;
+               font-size:13px; font-weight:600; cursor:pointer; background:#fff; }
+  .sb-toggle:hover { color:#1d58a8; background:#f5f9fe; }
+  .sb.collapsed .sb-toggle { justify-content:center; padding:14px 0; }
+
+  /* ---------- TEM KANBAN (bố cục như hình 3) ---------- */
+  .tem { display:grid; grid-template-columns:40fr 193fr 91fr 169fr 78fr 155fr 86fr 170fr; grid-auto-rows:minmax(34px,auto);
+         border-top:2px solid #111; border-left:2px solid #111; background:#fff; color:#111; font-size:13px; line-height:1.15; }
+  .tem .tc { border-right:2px solid #111; border-bottom:2px solid #111; display:flex; align-items:center; justify-content:center;
+             text-align:center; padding:3px 6px; font-weight:700; word-break:break-word; }
+  .tem .lbl { font-size:1.08em; text-transform:uppercase; }
+  .tem .big { font-size:1.55em; }
+  .tem .nm  { justify-content:flex-start; text-align:left; }
+  .tem .qrcell { padding:4px; }
+  .qr-box img, .qr-box canvas { max-width:100%; height:auto; }
+
   @media print {
-    .no-print { display: none !important; }
-    .print-area { display: block !important; }
-    body { background: #fff; }
+    @page { size: A4 landscape; margin: 8mm; }
+    .no-print { display:none !important; }
+    html, body, #root, .app-shell, .app-col, .app-main { height:auto !important; overflow:visible !important; display:block !important; padding:0 !important; }
+    body { background:#fff; }
+    .card { box-shadow:none !important; border:none !important; }
+    .tem-wrap { display:grid !important; grid-template-columns:1fr 1fr !important; gap:6mm !important; }
+    .tem { font-size:8.5px; break-inside:avoid; }
+    .tem .qr-box img, .tem .qr-box canvas { width:90px !important; height:90px !important; }
+    table.erp thead th { position:static; }
+    .print-sheet table { font-size:9px; }
   }
 </style>
 </head>
@@ -47,6 +111,10 @@ const TB_BOM = "Bomdonhang";
 const TB_TIEN = "KQ_Tien";
 const TB_PHAY = "KQ_Phay";
 const TB_NGUOI = "KQ_Nguoi";
+const TB_KANBAN = "Bomkanban";   // MỚI: dữ liệu sheet "BOM TỔNG VÀO" (cột col_a ... col_fa)
+
+// Logo THACO: để trống = dùng logo chữ vẽ sẵn. Có file logo thật thì điền đường dẫn, ví dụ "logo-thaco.png"
+const LOGO_URL = "";
 
 // Định nghĩa cột hiển thị cho Tra cứu / BOM (khớp đúng thứ tự người dùng yêu cầu)
 const BOM_COLUMNS = [
@@ -83,8 +151,68 @@ const BOM_COLUMNS = [
 ];
 
 // =====================================================================
-// 2. (đã bỏ đăng nhập — app mở trực tiếp, không cần tài khoản/mật khẩu)
+// 2. TIỆN ÍCH DÙNG CHUNG (MỚI) — logo, đọc cột Bomkanban, QR, lấy danh sách LSX
 // =====================================================================
+
+// Các cột công đoạn của sheet BOM TỔNG VÀO: cột AN -> EY (ô có số = thứ tự gia công 1,2,3...)
+const PROC_COLS = [["AN", "C.Tấm"], ["AO", "Laser"], ["AP", "CN"], ["AQ", "PLM tay TP"], ["AR", "VM"], ["AS", "Mài"], ["AT", "Cắt NC ống, hộp"], ["AU", "LS ống/TH"], ["AV", "Cưa Vòng TP"], ["AW", "PLM tay TP"], ["AX", "Uốn/Lốc"], ["AY", "Đột/ dập"], ["AZ", "Chấn NC/ CNC"], ["BA", "Lắp ráp LKCK ô tô"], ["BB", "Cán kệ kho lạnh"], ["BC", "Đúc nhôm"], ["BD", "Cưa GCCG"], ["BE", "Tiện"], ["BF", "Phay"], ["BG", "Nguội"], ["BH", "Nhiệt luyện"], ["BI", "Cán Tole-Diềm"], ["BJ", "PLM tay HT"], ["BK", "Hàn Thùng tải"], ["BL", "Hàn Thùng Ben"], ["BM", "Lắp ráp Thùng"], ["BN", "XH LKR"], ["BO", "XH KX"], ["BP", "Lốc"], ["BQ", "Hàn LK NĐH ghế"], ["BR", "Hàn LK Tải/ Bus"], ["BS", "Hàn SP trong nước"], ["BT", "Hàn SP xuất khẩu"], ["BU", "Lắp ráp LKCK"], ["BV", "Plasma tay"], ["BW", "SX ĐĨA"], ["BX", "SX VÀNH"], ["BY", "Hàn Mâm xe"], ["BZ", "Phun bi"], ["CA", "Phốt phát"], ["CB", "ED"], ["CC", "Xi mạ"], ["CD", "Sơn bột"], ["CE", "Sơn màu"], ["CF", "Gác thùng"], ["CG", "Kho THCK"], ["CH", "Phay cơ NMK"], ["CI", "Tiện cơ NMK"], ["CJ", "Khoan lỗ sâu CNC NMK"], ["CK", "Phay CNC NMK"], ["CL", "Làm nguội NMK"], ["CM", "Nhiệt luyện SKD NMK"], ["CN", "Mài mặt phẳng NMK"], ["CO", "Cắt dây NMK"], ["CP", "Bắn điện NMK"], ["CQ", "Kiểm tra NMK"], ["CR", "Lắp ráp NMK"], ["CS", "Thử Khuôn NMK"], ["CT", "Kho NMK"], ["CU", "Đột KTV"], ["CV", "Dập KTV"], ["CW", "Laser 3D KTV"], ["CX", "Hàn đai ốc KTV"], ["CY", "Hàn Bấm KTV"], ["CZ", "Hàn CO2 KTV"], ["DA", "Chuyền tán chassis KTV"], ["DB", "Gấp mí KTV"], ["DC", "Kho KTV"], ["DD", "Kho nhập TBCD"], ["DE", "Laser thép tấm TBCD"], ["DF", "Laser thép hình TBCD"], ["DG", "Cắt oxy-gas TBCD"], ["DH", "Cưa vòng TBCD"], ["DI", "Plasma tay TBCD"], ["DJ", "Vát mép TBCD"], ["DK", "Khoan Taro TBCD"], ["DL", "Chấn TBCD"], ["DM", "Lốc/ Uốn/Ống gió TBCD"], ["DN", "Loe ống TBCD"], ["DO", "Hàn CNN TBCD"], ["DP", "Hàn CCCD TBCD"], ["DQ", "Hàn KLM TBCD"], ["DR", "Hàn KCT TBCD"], ["DS", "Hàn TBNC TBCD"], ["DT", "Sơn Phun bi TBCD"], ["DU", "Sơn Phun thuỷ tinh TBCD"], ["DV", "Sơn Sơn màu TBCD"], ["DW", "Kho xuất TBCD"], ["DX", "Lắp ráp Tóp ống TBCD"], ["DY", "Lắp ráp Nối băng tải TBCD"], ["DZ", "Lắp ráp TB CNN TBCD"], ["EA", "Lắp ráp CCCD TBCD"], ["EB", "Kho Đóng kiện TBCD"], ["EC", "Kho Giao hàng TBCD"], ["ED", "Lắp đặt TBCD"], ["EE", "Hàn KX Ghế DL TBDD"], ["EF", "Hàn Ống xả TBDD"], ["EG", "Hàn LK Tải/Bus, Lốc TBDD"], ["EH", "Hàn kết cấu kim loại & TBCN TBDD"], ["EI", "Hàn Kim loại màu TBDD"], ["EJ", "Hàn SP xuất khẩu TBDD"], ["EK", "Lắp ráp SP nước ngoài TBDD"], ["EL", "Sơn bột TBDD"], ["EM", "Sơn màu TBDD"], ["EN", "Kho TBDD"], ["EO", "XH LKR SMRM"], ["EP", "XH KX SMRM"], ["EQ", "X-Lắp ráp SMRM"], ["ER", "Kiểm định SMRM"], ["ES", "Đóng kiện SMRM"], ["ET", "Kho SMRM"], ["EU", "Part list"], ["EV", "NM Composite"], ["EW", "NM Cơ điện"], ["EX", "NM Nội thất"], ["EY", "Kho NM khác"]];
+
+const colKey = (L) => 'col_' + L.toLowerCase();                       // 'AB' -> 'col_ab'
+const cell = (r, L) => (r[colKey(L)] == null ? '' : String(r[colKey(L)]).trim());
+
+// Danh sách công đoạn của 1 dòng BOM, sắp theo thứ tự gia công
+const getSteps = (r) => PROC_COLS
+  .map(([L, label]) => ({ label, n: parseFloat(cell(r, L)) }))
+  .filter(s => s.n > 0)
+  .sort((a, b) => a.n - b.n);
+
+// Đọc hết bảng (Supabase chỉ trả tối đa 1000 dòng/lần nên phải lặp)
+async function fetchAll(makeQuery) {
+  let all = [], from = 0; const step = 1000;
+  while (true) {
+    const { data, error } = await makeQuery().range(from, from + step - 1);
+    if (error) throw error;
+    all = all.concat(data || []);
+    if (!data || data.length < step) break;
+    from += step;
+  }
+  return all;
+}
+
+function useLsxList() {
+  const [list, setList] = useState([]);
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await fetchAll(() => supabase.from(TB_KANBAN).select('col_a').order('sheet_row'));
+        setList(Array.from(new Set(data.map(d => d.col_a).filter(Boolean))));
+      } catch (e) { console.error(e); }
+    })();
+  }, []);
+  return list;
+}
+
+function Logo({ collapsed }) {
+  if (LOGO_URL) return <img src={LOGO_URL} alt="THACO" style={{ height: collapsed ? 26 : 34 }} />;
+  return (
+    <svg viewBox="0 0 160 40" style={{ height: collapsed ? 22 : 32 }}>
+      <text x="0" y="32" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="38" letterSpacing="1" fill="#1b4f9c">
+        {collapsed ? 'T' : 'THACO'}
+      </text>
+    </svg>
+  );
+}
+
+function QR({ text, size = 130 }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current; if (!el) return;
+    el.innerHTML = '';
+    try { new window.QRCode(el, { text, width: size, height: size, correctLevel: window.QRCode.CorrectLevel.M }); }
+    catch (e) { el.textContent = 'QR lỗi'; }
+  }, [text, size]);
+  return <div ref={ref} className="qr-box" style={{ width: size, height: size }} />;
+}
 
 // =====================================================================
 // 3. DASHBOARD
@@ -113,29 +241,33 @@ function Dashboard() {
   };
 
   const cards = [
-    { title: 'Tổng số LSX', value: stats.tongDH, color: 'text-blue-600' },
-    { title: 'Tổng dòng BOM', value: stats.tongDong, color: 'text-navy' },
-    { title: 'Chờ nhận vật tư', value: stats.choNhanVT, color: 'text-orange-500' },
-    { title: 'Chờ giao hàng', value: stats.choGiao, color: 'text-red-500' },
+    { title: 'Tổng số LSX', value: stats.tongDH, color: 'text-blue-600', bg: 'bg-blue-50', icon: 'fa-clipboard-list' },
+    { title: 'Tổng dòng BOM', value: stats.tongDong, color: 'text-slate-800', bg: 'bg-slate-100', icon: 'fa-layer-group' },
+    { title: 'Chờ nhận vật tư', value: stats.choNhanVT, color: 'text-orange-500', bg: 'bg-orange-50', icon: 'fa-hourglass-half' },
+    { title: 'Chờ giao hàng', value: stats.choGiao, color: 'text-red-500', bg: 'bg-red-50', icon: 'fa-truck-fast' },
   ];
 
   return (
     <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard Tổng Quan</h1>
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-5 mb-5">
         {cards.map((c, i) => (
-          <div key={i} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-            <h3 className="text-gray-500 text-sm font-medium">{c.title}</h3>
-            <p className={`text-3xl font-bold mt-2 ${c.color}`}>{loading ? '…' : c.value}</p>
+          <div key={i} className="card p-5 flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${c.bg} ${c.color}`}>
+              <i className={`fa-solid ${c.icon} text-lg`}></i>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500 font-semibold">{c.title}</p>
+              <p className={`text-2xl font-extrabold mt-0.5 ${c.color}`}>{loading ? '…' : c.value}</p>
+            </div>
           </div>
         ))}
       </div>
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
-        <h3 className="font-semibold text-gray-700 mb-4">Lệnh sản xuất gần đây</h3>
+      <div className="card p-5">
+        <h3 className="font-bold text-slate-700 mb-3 text-sm">Lệnh sản xuất gần đây</h3>
         <div className="flex flex-wrap gap-2">
           {recentLsx.length === 0 && !loading && <p className="text-gray-400 text-sm">Chưa có dữ liệu.</p>}
           {recentLsx.map(lsx => (
-            <span key={lsx} className="px-3 py-1 bg-blue-50 text-primary rounded-full text-sm font-medium">{lsx}</span>
+            <span key={lsx} className="px-3 py-1 bg-blue-50 text-primary rounded-full text-xs font-semibold">{lsx}</span>
           ))}
         </div>
       </div>
@@ -144,35 +276,49 @@ function Dashboard() {
 }
 
 // =====================================================================
-// 4. TRA CỨU — bảng đầy đủ cột, tìm kiếm, toggle Nhận VT / Giao hàng
+// 4. TRA CỨU — bảng kiểu hình 1, lọc LSX, pill công đoạn, toggle Nhận VT / Giao hàng
 // =====================================================================
+const QC_KEYS = ['dai', 'rong', 'day', 'hinh_hop', 'dn', 'dt'];
+const KEY_COLS = ['lsx', 'sl_dh'];
+const STAGES = [
+  ['all', 'Tất cả'], ['duc_nhom', 'Đúc nhôm'], ['cua_vong', 'Cưa vòng'], ['tien', 'Tiện'],
+  ['phay', 'Phay'], ['nguoi', 'Nguội'], ['nhiet', 'Nhiệt'],
+];
+
 function TraCuu() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
+  const [lsxSel, setLsxSel] = useState('');
+  const [stage, setStage] = useState('all');
   const pendingSaves = useRef(new Set());
 
   useEffect(() => { load(); }, []);
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from(TB_BOM).select('*').order('lsx', { ascending: false }).order('stt_ct');
-    if (!error) setRows(data || []);
+    try {
+      const data = await fetchAll(() => supabase.from(TB_BOM).select('*').order('lsx', { ascending: false }).order('stt_ct'));
+      setRows(data);
+    } catch (e) { console.error(e); }
     setLoading(false);
   };
 
-  const filtered = useMemo(() => {
-    if (!q.trim()) return rows;
+  const lsxOpts = useMemo(() => Array.from(new Set(rows.map(r => r.lsx).filter(Boolean))), [rows]);
+  const has = (r, k) => r[k] != null && String(r[k]).trim() !== '';
+
+  const base = useMemo(() => {
     const s = q.trim().toLowerCase();
     return rows.filter(r =>
-      (r.lsx || '').toLowerCase().includes(s) ||
-      (r.msct || '').toLowerCase().includes(s) ||
-      (r.ten_chi_tiet || '').toLowerCase().includes(s) ||
-      (r.san_pham || '').toLowerCase().includes(s)
+      (!lsxSel || r.lsx === lsxSel) &&
+      (!s || (r.lsx || '').toLowerCase().includes(s) || (r.msct || '').toLowerCase().includes(s) ||
+        (r.ten_chi_tiet || '').toLowerCase().includes(s) || (r.san_pham || '').toLowerCase().includes(s))
     );
-  }, [rows, q]);
+  }, [rows, q, lsxSel]);
 
-  // Optimistic toggle cho Nhận VT / Giao hàng — theo đúng pattern dùng ở app BOM GCCK-CX
+  const filtered = useMemo(() => base.filter(r => stage === 'all' || has(r, stage)), [base, stage]);
+
+  // Optimistic toggle cho Nhận VT / Giao hàng
   const toggleBool = async (row, field) => {
     const key = row.id + '-' + field;
     if (pendingSaves.current.has(key)) return;
@@ -181,41 +327,62 @@ function TraCuu() {
     setRows(prev => prev.map(r => r.id === row.id ? { ...r, [field]: newVal } : r));
     const { error } = await supabase.from(TB_BOM).update({ [field]: newVal }).eq('id', row.id);
     if (error) {
-      // rollback nếu lỗi
       setRows(prev => prev.map(r => r.id === row.id ? { ...r, [field]: !newVal } : r));
       alert('Lưu thất bại: ' + error.message);
     }
     pendingSaves.current.delete(key);
   };
 
+  const qcIdx = BOM_COLUMNS.findIndex(c => c.key === QC_KEYS[0]);
+
   return (
-    <div>
-      <div className="flex justify-between items-center mb-4">
-        <h1 className="text-2xl font-bold text-gray-800">Tra cứu BOM</h1>
-        <input
-          value={q} onChange={e => setQ(e.target.value)}
-          placeholder="Tìm theo LSX / MSCT / Tên chi tiết / Sản phẩm…"
-          className="border border-gray-300 rounded-md px-3 py-2 w-80 text-sm"
-        />
+    <div className="space-y-3">
+      {/* Thanh công cụ */}
+      <div className="card p-3 flex flex-wrap items-center gap-3">
+        <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
+        <select value={lsxSel} onChange={e => setLsxSel(e.target.value)} className="inp" style={{ minWidth: 180 }}>
+          <option value="">Tất cả LSX</option>
+          {lsxOpts.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm theo LSX / MSCT / Tên chi tiết / Sản phẩm…" className="inp" style={{ width: 340 }} />
+        <button className="btn ml-auto" onClick={load}><i className="fa-solid fa-rotate"></i> Làm mới</button>
       </div>
-      <div className="bg-white rounded-lg shadow overflow-auto" style={{ maxHeight: '75vh' }}>
-        <table className="data-grid min-w-full text-sm border-collapse">
-          <thead className="bg-gray-100">
+
+      {/* Pill công đoạn */}
+      <div className="card p-3 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-bold text-slate-500 mr-1">Công đoạn</span>
+        {STAGES.map(([k, label]) => (
+          <button key={k} className={'pill ' + (stage === k ? 'on' : '')} onClick={() => setStage(k)}>
+            {label} ({k === 'all' ? base.length : base.filter(r => has(r, k)).length} dòng)
+          </button>
+        ))}
+      </div>
+
+      {/* Bảng */}
+      <div className="card overflow-auto" style={{ maxHeight: '68vh' }}>
+        <table className="erp">
+          <thead>
             <tr>
-              {BOM_COLUMNS.map(c => (
-                <th key={c.key} style={{ minWidth: c.w }} className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-200">{c.label}</th>
-              ))}
+              {BOM_COLUMNS.map((c, i) => {
+                if (QC_KEYS.includes(c.key)) {
+                  return i === qcIdx ? <th key="qc" colSpan={QC_KEYS.length}>QUY CÁCH (PHÔI)</th> : null;
+                }
+                return <th key={c.key} rowSpan={2} style={{ minWidth: c.w }}>{c.label}</th>;
+              })}
+            </tr>
+            <tr className="sub">
+              {BOM_COLUMNS.filter(c => QC_KEYS.includes(c.key)).map(c => <th key={c.key} style={{ minWidth: c.w }}>{c.label}</th>)}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <tr><td colSpan={BOM_COLUMNS.length} className="text-center py-6 text-gray-400">Đang tải…</td></tr>
+              <tr><td colSpan={BOM_COLUMNS.length} className="text-center py-8 text-gray-400">Đang tải…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={BOM_COLUMNS.length} className="text-center py-6 text-gray-400">Không tìm thấy dữ liệu.</td></tr>
+              <tr><td colSpan={BOM_COLUMNS.length} className="text-center py-8 text-gray-400">Không tìm thấy dữ liệu.</td></tr>
             ) : filtered.map(r => (
-              <tr key={r.id} className="hover:bg-blue-50/50 border-b border-gray-100">
+              <tr key={r.id}>
                 {BOM_COLUMNS.map(c => (
-                  <td key={c.key} className="px-3 py-1.5">
+                  <td key={c.key} className={(KEY_COLS.includes(c.key) ? 'key ' : '') + (c.w <= 90 ? 'ctr' : '')}>
                     {c.type === 'bool' ? (
                       <input type="checkbox" checked={!!r[c.key]} onChange={() => toggleBool(r, c.key)} className="w-4 h-4 accent-blue-600 cursor-pointer" />
                     ) : (r[c.key] ?? '')}
@@ -226,7 +393,7 @@ function TraCuu() {
           </tbody>
         </table>
       </div>
-      <p className="text-xs text-gray-400 mt-2">{filtered.length} / {rows.length} dòng</p>
+      <p className="text-xs text-gray-400">{filtered.length} / {rows.length} dòng</p>
     </div>
   );
 }
@@ -288,30 +455,25 @@ function Bom() {
 
   if (selectedLsx) {
     return (
-      <div>
-        <button onClick={() => setSelectedLsx(null)} className="mb-4 text-primary hover:underline">&larr; Quay lại danh sách</button>
-        <h2 className="text-xl font-bold text-navy mb-4">Chi tiết LSX: {selectedLsx}</h2>
-        <div className="bg-white rounded-lg shadow overflow-x-auto">
-          <table className="min-w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">STT CT</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">MSCT</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Tên chi tiết</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">SL/ĐH</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Nhận VT</th>
-                <th className="px-4 py-3 text-left font-medium text-gray-500">Giao hàng</th>
-              </tr>
+      <div className="space-y-3">
+        <div className="card p-3 flex items-center gap-3">
+          <button onClick={() => setSelectedLsx(null)} className="btn"><i className="fa-solid fa-arrow-left"></i> Quay lại</button>
+          <span className="font-bold text-slate-700 text-sm">Chi tiết LSX: <span className="text-primary">{selectedLsx}</span></span>
+        </div>
+        <div className="card overflow-auto" style={{ maxHeight: '72vh' }}>
+          <table className="erp">
+            <thead>
+              <tr><th>STT CT</th><th>MSCT</th><th>Tên chi tiết</th><th>SL/ĐH</th><th>Nhận VT</th><th>Giao hàng</th></tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody>
               {details.map(d => (
                 <tr key={d.id}>
-                  <td className="px-4 py-3">{d.stt_ct}</td>
-                  <td className="px-4 py-3 font-medium">{d.msct}</td>
-                  <td className="px-4 py-3">{d.ten_chi_tiet}</td>
-                  <td className="px-4 py-3">{d.sl_dh}</td>
-                  <td className="px-4 py-3">{d.nhan_vat_tu ? '✔' : ''}</td>
-                  <td className="px-4 py-3">{d.giao_hang ? '✔' : ''}</td>
+                  <td className="ctr">{d.stt_ct}</td>
+                  <td className="font-semibold">{d.msct}</td>
+                  <td>{d.ten_chi_tiet}</td>
+                  <td className="key ctr">{d.sl_dh}</td>
+                  <td className="ctr">{d.nhan_vat_tu ? '✔' : ''}</td>
+                  <td className="ctr">{d.giao_hang ? '✔' : ''}</td>
                 </tr>
               ))}
             </tbody>
@@ -322,29 +484,23 @@ function Bom() {
   }
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Quản lý BOM / Đơn hàng</h1>
-        <button onClick={() => setIsImportOpen(true)} className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">Nhập BOM (CSV)</button>
+    <div className="space-y-3">
+      <div className="card p-3 flex items-center gap-3">
+        <span className="text-xs font-bold text-slate-500">{orders.length} lệnh sản xuất</span>
+        <button onClick={fetchOrders} className="btn ml-auto"><i className="fa-solid fa-rotate"></i> Làm mới</button>
+        <button onClick={() => setIsImportOpen(true)} className="btn btn-green"><i className="fa-solid fa-file-csv"></i> Nhập BOM (CSV)</button>
       </div>
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">LSX</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Sản phẩm</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">KHGH</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Hành động</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? <tr><td colSpan="4" className="text-center py-4">Đang tải…</td></tr> :
+      <div className="card overflow-auto" style={{ maxHeight: '72vh' }}>
+        <table className="erp">
+          <thead><tr><th>LSX</th><th>Sản phẩm</th><th>KHGH</th><th>Hành động</th></tr></thead>
+          <tbody>
+            {loading ? <tr><td colSpan="4" className="text-center py-6 text-gray-400">Đang tải…</td></tr> :
               orders.map(o => (
-                <tr key={o.lsx} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 font-medium text-primary cursor-pointer hover:underline" onClick={() => viewDetails(o.lsx)}>{o.lsx}</td>
-                  <td className="px-6 py-4">{o.san_pham}</td>
-                  <td className="px-6 py-4">{o.khgh}</td>
-                  <td className="px-6 py-4"><button onClick={() => viewDetails(o.lsx)} className="text-primary hover:text-blue-800 font-medium">Xem BOM</button></td>
+                <tr key={o.lsx}>
+                  <td className="key cursor-pointer text-primary" onClick={() => viewDetails(o.lsx)}>{o.lsx}</td>
+                  <td>{o.san_pham}</td>
+                  <td>{o.khgh}</td>
+                  <td><button onClick={() => viewDetails(o.lsx)} className="text-primary hover:text-blue-800 font-semibold text-xs">Xem BOM</button></td>
                 </tr>
               ))}
           </tbody>
@@ -353,14 +509,14 @@ function Bom() {
 
       {isImportOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-lg w-full max-w-md shadow-2xl">
-            <h2 className="text-xl font-bold mb-4">Nhập BOM từ CSV</h2>
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
+            <h2 className="text-lg font-bold mb-4">Nhập BOM từ CSV</h2>
             <div className="space-y-4">
-              <input type="text" placeholder="Mã LSX" value={importLsx} onChange={e => setImportLsx(e.target.value)} className="w-full border p-2 rounded" />
-              <input type="file" accept=".csv" onChange={e => setFile(e.target.files[0])} className="w-full border p-2 rounded" />
-              <div className="flex justify-end space-x-3 mt-6">
-                <button onClick={() => setIsImportOpen(false)} className="px-4 py-2 border rounded">Hủy</button>
-                <button onClick={handleImportBOM} className="px-4 py-2 bg-green-600 text-white rounded">Import</button>
+              <input type="text" placeholder="Mã LSX" value={importLsx} onChange={e => setImportLsx(e.target.value)} className="inp w-full" />
+              <input type="file" accept=".csv" onChange={e => setFile(e.target.files[0])} className="inp w-full" />
+              <div className="flex justify-end gap-3 mt-6">
+                <button onClick={() => setIsImportOpen(false)} className="btn">Hủy</button>
+                <button onClick={handleImportBOM} className="btn btn-green">Import</button>
               </div>
             </div>
           </div>
@@ -371,67 +527,116 @@ function Bom() {
 }
 
 // =====================================================================
-// 6. IN ĐƠN HÀNG — chọn LSX, xem bảng in, nút in
+// 6. IN ĐƠN HÀNG — bảng Định mức vật tư (hình 6), nhập LSX để tìm, nút in
+//    Dữ liệu lấy từ bảng Bomkanban (sheet BOM TỔNG VÀO). NC1..NC10 = 10 công đoạn đầu theo thứ tự gia công.
 // =====================================================================
 function InDonHang() {
-  const [lsxList, setLsxList] = useState([]);
-  const [selectedLsx, setSelectedLsx] = useState('');
+  const lsxList = useLsxList();
+  const [input, setInput] = useState('');
+  const [khgh, setKhgh] = useState('');
   const [rows, setRows] = useState([]);
+  const [lsxShown, setLsxShown] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [searched, setSearched] = useState(false);
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.from(TB_BOM).select('lsx');
-      setLsxList(Array.from(new Set((data || []).map(d => d.lsx))));
-    })();
-  }, []);
+  const search = async (value) => {
+    const v = (value ?? input).trim();
+    if (!v) return;
+    setLoading(true); setSearched(true);
+    try {
+      const data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').ilike('col_a', `%${v}%`).order('sheet_row'));
+      setRows(data);
+      setLsxShown(data.length ? data[0].col_a : v);
+    } catch (e) { alert('Lỗi tìm kiếm: ' + e.message); }
+    setLoading(false);
+  };
 
-  useEffect(() => {
-    if (!selectedLsx) { setRows([]); return; }
-    (async () => {
-      const { data } = await supabase.from(TB_BOM).select('*').eq('lsx', selectedLsx).order('stt_ct');
-      setRows(data || []);
-    })();
-  }, [selectedLsx]);
+  const NC = 10;
+  const TOTAL_COLS = 12 + NC + 3;
+  let colNo = 0; const no = () => ++colNo;
 
   return (
-    <div>
-      <div className="no-print flex items-center gap-4 mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">In đơn hàng</h1>
-        <select value={selectedLsx} onChange={e => setSelectedLsx(e.target.value)} className="border rounded px-3 py-2 text-sm">
-          <option value="">— Chọn LSX —</option>
-          {lsxList.map(lsx => <option key={lsx} value={lsx}>{lsx}</option>)}
-        </select>
-        {selectedLsx && <button onClick={() => window.print()} className="bg-primary text-white px-4 py-2 rounded shadow hover:bg-blue-700">In đơn hàng</button>}
+    <div className="space-y-3">
+      {/* Thanh công cụ (không in) */}
+      <div className="no-print card p-3 flex flex-wrap items-center gap-3">
+        <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
+        <input list="lsx-datalist" value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && search()} placeholder="Nhập mã lệnh sản xuất…" className="inp" style={{ width: 240 }} />
+        <datalist id="lsx-datalist">{lsxList.map(l => <option key={l} value={l} />)}</datalist>
+        <button onClick={() => search()} className="btn btn-primary"><i className="fa-solid fa-magnifying-glass"></i> Tìm kiếm</button>
+        <span className="text-xs font-bold text-slate-500 ml-3">KH GH</span>
+        <input value={khgh} onChange={e => setKhgh(e.target.value)} placeholder="Ngày/kế hoạch giao hàng" className="inp" style={{ width: 200 }} />
+        <button onClick={() => window.print()} disabled={!rows.length} className="btn btn-green ml-auto" style={{ opacity: rows.length ? 1 : .5 }}>
+          <i className="fa-solid fa-print"></i> In đơn hàng
+        </button>
       </div>
 
-      {selectedLsx && (
-        <div className="print-area bg-white rounded-lg shadow p-6">
-          <div className="flex justify-between items-center mb-4 border-b pb-3">
-            <h2 className="text-xl font-bold">PHIẾU BOM — LSX {selectedLsx}</h2>
-            <span className="text-sm text-gray-500">Ngày in: {new Date().toLocaleDateString('vi-VN')}</span>
-          </div>
-          <table className="min-w-full text-sm border border-gray-300">
-            <thead className="bg-gray-100">
+      {loading && <div className="no-print card p-6 text-center text-gray-400">Đang tải…</div>}
+      {!loading && searched && rows.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không tìm thấy lệnh sản xuất “{input}”.</div>}
+      {!loading && !searched && <div className="no-print card p-6 text-center text-gray-400">Nhập mã lệnh sản xuất rồi bấm Tìm kiếm (hoặc nhấn Enter).</div>}
+
+      {rows.length > 0 && !loading && (
+        <div className="print-sheet card overflow-auto p-2">
+          <table className="erp" style={{ minWidth: 1500 }}>
+            <thead>
               <tr>
-                <th className="border px-2 py-1">STT</th>
-                <th className="border px-2 py-1">MSCT</th>
-                <th className="border px-2 py-1">Tên chi tiết</th>
-                <th className="border px-2 py-1">Vật liệu</th>
-                <th className="border px-2 py-1">SL/ĐH</th>
-                <th className="border px-2 py-1">Ghi chú</th>
+                <th colSpan={TOTAL_COLS} style={{ background: '#fff', color: '#000', fontSize: 15, borderBottom: '1px solid #000' }}>
+                  ĐỊNH MỨC VẬT TƯ<br /><span style={{ fontSize: 12 }}>XƯỞNG: Gia Công Cơ Khí Chính xác</span>
+                </th>
+              </tr>
+              <tr>
+                {['TT', 'MSCT', 'Tên chi tiết', 'Vật liệu', 'Dài', 'Rộng', 'Dày', 'Hình/ hộp', 'Dn', 'Dt', 'SL/SP', 'SL/ĐH'].map((h, i) => (
+                  <th key={h} rowSpan={3} style={{ background: '#fff', color: '#000', border: '1px solid #000', minWidth: i === 2 ? 220 : i === 1 ? 110 : 52 }}>
+                    {i === 1 && <div style={{ fontSize: 9, fontWeight: 600 }}>{lsxShown}</div>}{h}
+                  </th>
+                ))}
+                <th colSpan={NC} style={{ background: '#ffff00', color: '#000', border: '1px solid #000' }}>KH GH {khgh && `: ${khgh}`}</th>
+                <th colSpan={3} rowSpan={2} style={{ background: '#fff', color: '#000', border: '1px solid #000', fontSize: 20 }}>{lsxShown}</th>
+              </tr>
+              <tr>
+                <th colSpan={NC} style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000' }}>Công đoạn gia công</th>
+              </tr>
+              <tr>
+                {Array.from({ length: NC }, (_, i) => (
+                  <th key={i} style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 78 }}>NC{i + 1}</th>
+                ))}
+                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên giao<br /><span style={{ fontSize: 9 }}>(Ký và ghi rõ họ tên)</span></th>
+                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên nhận<br /><span style={{ fontSize: 9 }}>(Ký và ghi rõ họ tên)</span></th>
+                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 120 }}>Ghi chú</th>
+              </tr>
+              <tr>
+                {Array.from({ length: TOTAL_COLS }, (_, i) => (
+                  <th key={i} style={{ background: '#cdf5fb', color: '#000', border: '1px solid #000', padding: '3px 4px' }}>{no()}</th>
+                ))}
               </tr>
             </thead>
             <tbody>
-              {rows.map(r => (
-                <tr key={r.id}>
-                  <td className="border px-2 py-1">{r.stt_ct}</td>
-                  <td className="border px-2 py-1">{r.msct}</td>
-                  <td className="border px-2 py-1">{r.ten_chi_tiet}</td>
-                  <td className="border px-2 py-1">{r.vat_lieu}</td>
-                  <td className="border px-2 py-1">{r.sl_dh}</td>
-                  <td className="border px-2 py-1">{r.ghi_chu}</td>
-                </tr>
-              ))}
+              {rows.map((r, idx) => {
+                const steps = getSteps(r);
+                const bd = { border: '1px solid #000' };
+                return (
+                  <tr key={r.id}>
+                    <td className="ctr" style={bd}>{cell(r, 'B') || idx + 1}</td>
+                    <td style={bd}>{cell(r, 'Q')}</td>
+                    <td style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'R')}</td>
+                    <td className="ctr" style={bd}>{cell(r, 'U')}</td>
+                    <td className="ctr" style={bd}>{cell(r, 'AB')}</td>
+                    <td className="ctr" style={bd}>{cell(r, 'AC')}</td>
+                    <td className="ctr" style={bd}>{cell(r, 'AD')}</td>
+                    <td className="ctr" style={bd}>{cell(r, 'AE')}</td>
+                    <td className="ctr" style={bd}>{cell(r, 'AF')}</td>
+                    <td className="ctr" style={bd}>{cell(r, 'AG')}</td>
+                    <td className="ctr" style={bd}>{cell(r, 'AI')}</td>
+                    <td className="ctr" style={{ ...bd, fontWeight: 700 }}>{cell(r, 'AJ')}</td>
+                    {Array.from({ length: NC }, (_, i) => (
+                      <td key={i} className="ctr" style={{ ...bd, whiteSpace: 'normal', fontSize: 11 }}>{steps[i] ? steps[i].label : ''}</td>
+                    ))}
+                    <td style={bd}></td>
+                    <td style={bd}></td>
+                    <td style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'EZ')}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -441,57 +646,142 @@ function InDonHang() {
 }
 
 // =====================================================================
-// 7. KANBAN — nhóm theo LSX, trạng thái suy ra từ nhan_vat_tu / giao_hang
+// 7. KANBAN — tem Kanban (bố cục hình 3), mỗi dòng Bomkanban = 1 tem
 // =====================================================================
-function Kanban() {
-  const [cols, setCols] = useState({ choVT: [], daNhanVT: [], daGiao: [] });
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => { load(); }, []);
+// >>> Chỗ này để NỐI DỮ LIỆU vào từng ô của tem. Đổi cột chỉ cần sửa chữ cái cột Excel (ví dụ 'AB').
+//     Ô nào để '' là chờ bạn cung cấp thông tin.
+const TEM_MAP = {
+  lsx:        r => cell(r, 'A'),     // Lệnh sản xuất
+  don_hang:   r => '',               // (ô dài bên phải LSX) tên/mã đơn hàng — CHỜ THÔNG TIN
+  ma_ct:      r => cell(r, 'Q'),     // Mã chi tiết
+  khach_hang: r => '',               // Khách hàng — CHỜ THÔNG TIN
+  ten_ct:     r => cell(r, 'R'),     // Tên chi tiết
+  ngay_ht:    r => '',               // Ngày HT — CHỜ THÔNG TIN
+  vat_lieu:   r => cell(r, 'U'),     // Vật liệu
+  heat_lot:   r => '',               // Số Heat/Lot — CHỜ THÔNG TIN
+  stt_ct:     r => cell(r, 'B'),     // STT chi tiết
+  hinh_hop:   r => cell(r, 'AE'),    // Hình/hộp
+  dai:        r => cell(r, 'AB'),    // Dài
+  day:        r => cell(r, 'AD'),    // Dày
+  so_luong:   r => cell(r, 'AJ'),    // Số lượng (SL/ĐH)
+  rong:       r => cell(r, 'AC'),    // Rộng
+  dn_dt:      r => { const a = cell(r, 'AF'), b = cell(r, 'AG'); return (a || b) ? (a ? 'Ø' + a : '') + '/' + b : ''; },
+  ghi_chu:    r => cell(r, 'EZ'),    // Ghi chú
+  may_gc:     r => '',               // Máy GC — CHỜ THÔNG TIN
+};
 
-  const load = async () => {
-    setLoading(true);
-    const { data } = await supabase.from(TB_BOM).select('lsx, san_pham, nhan_vat_tu, giao_hang');
-    const byLsx = new Map();
-    (data || []).forEach(r => {
-      if (!byLsx.has(r.lsx)) byLsx.set(r.lsx, { lsx: r.lsx, san_pham: r.san_pham, total: 0, vt: 0, giao: 0 });
-      const o = byLsx.get(r.lsx);
-      o.total++; if (r.nhan_vat_tu) o.vt++; if (r.giao_hang) o.giao++;
-    });
-    const choVT = [], daNhanVT = [], daGiao = [];
-    for (const o of byLsx.values()) {
-      if (o.giao === o.total) daGiao.push(o);
-      else if (o.vt === o.total) daNhanVT.push(o);
-      else choVT.push(o);
-    }
-    setCols({ choVT, daNhanVT, daGiao });
-    setLoading(false);
-  };
+function TemKanban({ r }) {
+  const d = {}; Object.keys(TEM_MAP).forEach(k => { d[k] = TEM_MAP[k](r); });
+  const steps = getSteps(r).map(s => s.label);
+  // Mã QR theo hình 4:  LSX | STT chi tiết | Mã chi tiết | Tên chi tiết | Số lượng
+  const qrText = [d.lsx, d.stt_ct, d.ma_ct, d.ten_ct, d.so_luong].join(' | ');
 
-  const Column = ({ title, items, color }) => (
-    <div className="bg-gray-50 rounded-lg p-4 flex-1 min-w-[280px]">
-      <h3 className={`font-semibold mb-3 ${color}`}>{title} <span className="text-gray-400 font-normal">({items.length})</span></h3>
-      <div className="space-y-3">
-        {items.map(o => (
-          <div key={o.lsx} className="bg-white rounded-md shadow-sm p-3 border border-gray-100">
-            <p className="font-medium text-sm text-navy">{o.lsx}</p>
-            <p className="text-xs text-gray-500">{o.san_pham}</p>
-            <p className="text-xs text-gray-400 mt-1">VT {o.vt}/{o.total} · Giao {o.giao}/{o.total}</p>
-          </div>
-        ))}
-        {items.length === 0 && <p className="text-xs text-gray-400">Không có LSX nào.</p>}
-      </div>
-    </div>
-  );
+  const Lb = ({ c, children }) => <div className="tc lbl" style={{ gridColumn: c }}>{children}</div>;
+  const Vl = ({ c, big, children }) => <div className={'tc ' + (big ? 'big' : '')} style={{ gridColumn: c }}>{children}</div>;
 
   return (
-    <div>
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Kanban Đơn Hàng</h1>
-      {loading ? <p className="text-gray-400">Đang tải…</p> : (
-        <div className="flex gap-4 overflow-x-auto">
-          <Column title="Chờ nhận vật tư" items={cols.choVT} color="text-orange-500" />
-          <Column title="Đã nhận VT — chờ giao" items={cols.daNhanVT} color="text-blue-600" />
-          <Column title="Đã giao hàng" items={cols.daGiao} color="text-green-600" />
+    <div className="tem">
+      <Lb c="1 / 3">Lệnh sản xuất</Lb><Vl c="3 / 5" big>{d.lsx}</Vl><Vl c="5 / 9">{d.don_hang}</Vl>
+
+      <Lb c="1 / 3">Mã chi tiết</Lb><Vl c="3 / 5">{d.ma_ct}</Vl>
+      <Lb c="5 / 7">Khách hàng</Lb><Vl c="7 / 9">{d.khach_hang}</Vl>
+
+      <Lb c="1 / 3">Tên chi tiết</Lb><Vl c="3 / 5">{d.ten_ct}</Vl>
+      <Lb c="5 / 7">Ngày HT</Lb><Vl c="7 / 9">{d.ngay_ht}</Vl>
+
+      <Lb c="1 / 3">Vật liệu</Lb><Vl c="3 / 5">{d.vat_lieu}</Vl>
+      <Lb c="5 / 7">Số Heat/Lot</Lb><Vl c="7 / 9">{d.heat_lot}</Vl>
+
+      <Lb c="1 / 3">STT chi tiết</Lb><Vl c="3 / 4" big>{d.stt_ct}</Vl><Lb c="4 / 5">Hình/ hộp</Lb>
+      <Lb c="5 / 6">Dài</Lb><Vl c="6 / 7">{d.dai}</Vl><Lb c="7 / 8">Dày</Lb><Vl c="8 / 9">{d.day}</Vl>
+
+      <Lb c="1 / 3">Số lượng</Lb><Vl c="3 / 4" big>{d.so_luong}</Vl><Vl c="4 / 5">{d.hinh_hop}</Vl>
+      <Lb c="5 / 6">Rộng</Lb><Vl c="6 / 7">{d.rong}</Vl><Lb c="7 / 8">Dn/Dt</Lb><Vl c="8 / 9" big>{d.dn_dt}</Vl>
+
+      {[0, 1, 2, 3, 4].map(i => (
+        <React.Fragment key={i}>
+          <div className="tc" style={{ gridColumn: '1 / 2' }}>{i + 1}</div>
+          <div className="tc nm" style={{ gridColumn: '2 / 3' }}>{steps[i] || ''}</div>
+          <div className="tc" style={{ gridColumn: '3 / 4' }}>{i + 6}</div>
+          <div className="tc nm" style={{ gridColumn: '4 / 5' }}>{steps[i + 5] || ''}</div>
+          <div className="tc" style={{ gridColumn: '5 / 6' }}>{i + 11}</div>
+          <div className="tc nm" style={{ gridColumn: '6 / 7' }}>{steps[i + 10] || ''}</div>
+          {i === 0 && <div className="tc qrcell" style={{ gridColumn: '7 / 9', gridRow: 'span 5' }}><QR text={qrText} size={130} /></div>}
+        </React.Fragment>
+      ))}
+
+      <Lb c="1 / 3">Ghi chú</Lb><Vl c="3 / 7">{d.ghi_chu}</Vl><Lb c="7 / 8">Máy GC</Lb><Vl c="8 / 9">{d.may_gc}</Vl>
+    </div>
+  );
+}
+
+function Kanban() {
+  const lsxList = useLsxList();
+  const [lsx, setLsx] = useState('');
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+  const [showAll, setShowAll] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const PAGE = 12;
+
+  const load = async (value) => {
+    if (!value) { setRows([]); return; }
+    setLoading(true); setPage(1);
+    try { setRows(await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', value).order('sheet_row'))); }
+    catch (e) { alert('Lỗi tải dữ liệu: ' + e.message); }
+    setLoading(false);
+  };
+  useEffect(() => { load(lsx); }, [lsx]);
+
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    if (!s) return rows;
+    return rows.filter(r => cell(r, 'Q').toLowerCase().includes(s) || cell(r, 'R').toLowerCase().includes(s));
+  }, [rows, q]);
+
+  const shown = showAll ? filtered : filtered.slice(0, page * PAGE);
+
+  const doPrint = () => { setShowAll(true); setPrinting(true); };
+  useEffect(() => {
+    if (!(printing && showAll)) return;
+    const t = setTimeout(() => { window.print(); setPrinting(false); }, 800);   // chờ QR vẽ xong
+    return () => clearTimeout(t);
+  }, [printing, showAll]);
+  useEffect(() => {
+    const h = () => setShowAll(false);
+    window.addEventListener('afterprint', h);
+    return () => window.removeEventListener('afterprint', h);
+  }, []);
+
+  return (
+    <div className="space-y-3">
+      <div className="no-print card p-3 flex flex-wrap items-center gap-3">
+        <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
+        <select value={lsx} onChange={e => setLsx(e.target.value)} className="inp" style={{ minWidth: 200 }}>
+          <option value="">— Chọn LSX —</option>
+          {lsxList.map(l => <option key={l} value={l}>{l}</option>)}
+        </select>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm mã / tên chi tiết…" className="inp" style={{ width: 240 }} />
+        <button className="btn" onClick={() => load(lsx)}><i className="fa-solid fa-rotate"></i> Làm mới</button>
+        <button className="btn btn-green ml-auto" onClick={doPrint} disabled={!filtered.length} style={{ opacity: filtered.length ? 1 : .5 }}>
+          <i className="fa-solid fa-print"></i> In tem ({filtered.length})
+        </button>
+      </div>
+
+      {loading && <div className="no-print card p-6 text-center text-gray-400">Đang tải…</div>}
+      {!loading && !lsx && <div className="no-print card p-6 text-center text-gray-400">Chọn lệnh sản xuất để hiển thị tem Kanban.</div>}
+      {!loading && lsx && filtered.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không có chi tiết nào.</div>}
+
+      <div className="tem-wrap grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(560px, 1fr))' }}>
+        {shown.map(r => <TemKanban key={r.id} r={r} />)}
+      </div>
+
+      {!showAll && shown.length < filtered.length && (
+        <div className="no-print text-center">
+          <button className="btn" onClick={() => setPage(p => p + 1)}>Xem thêm ({filtered.length - shown.length} tem)</button>
         </div>
       )}
     </div>
@@ -500,7 +790,6 @@ function Kanban() {
 
 // =====================================================================
 // 8. PHÂN QUYỀN — danh sách người dùng/vai trò thủ công (bảng "NguoiDung")
-//    Không còn gắn với tài khoản đăng nhập Supabase Auth (đã bỏ đăng nhập).
 // =====================================================================
 function PhanQuyen() {
   const [users, setUsers] = useState([]);
@@ -531,30 +820,22 @@ function PhanQuyen() {
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-800">Phân quyền người dùng</h1>
-        <div className="flex gap-2">
-          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Tên người dùng mới…" className="border rounded px-3 py-2 text-sm" />
-          <button onClick={addUser} className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-blue-700">+ Thêm</button>
-        </div>
+    <div className="space-y-3">
+      <div className="card p-3 flex items-center gap-3">
+        <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addUser()} placeholder="Tên người dùng mới…" className="inp" style={{ width: 260 }} />
+        <button onClick={addUser} className="btn btn-primary"><i className="fa-solid fa-plus"></i> Thêm</button>
       </div>
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full text-sm">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Họ tên</th>
-              <th className="px-6 py-3 text-left font-medium text-gray-500">Vai trò</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {loading ? <tr><td colSpan="2" className="text-center py-4">Đang tải…</td></tr> :
-              users.length === 0 ? <tr><td colSpan="2" className="text-center py-4 text-gray-400">Chưa có người dùng nào.</td></tr> :
+      <div className="card overflow-auto">
+        <table className="erp">
+          <thead><tr><th style={{ textAlign: 'left' }}>Họ tên</th><th style={{ textAlign: 'left' }}>Vai trò</th></tr></thead>
+          <tbody>
+            {loading ? <tr><td colSpan="2" className="text-center py-6 text-gray-400">Đang tải…</td></tr> :
+              users.length === 0 ? <tr><td colSpan="2" className="text-center py-6 text-gray-400">Chưa có người dùng nào.</td></tr> :
               users.map(u => (
                 <tr key={u.id}>
-                  <td className="px-6 py-4">{u.full_name || '—'}</td>
-                  <td className="px-6 py-4">
-                    <select value={u.role || 'user'} onChange={e => updateRole(u.id, e.target.value)} className="border rounded px-2 py-1 text-sm">
+                  <td>{u.full_name || '—'}</td>
+                  <td>
+                    <select value={u.role || 'user'} onChange={e => updateRole(u.id, e.target.value)} className="inp" style={{ padding: '3px 8px' }}>
                       {roles.map(r => <option key={r} value={r}>{r}</option>)}
                     </select>
                   </td>
@@ -568,52 +849,89 @@ function PhanQuyen() {
 }
 
 // =====================================================================
-// 9. SIDEBAR (trắng, chữ xanh dương) + LAYOUT
+// 9. SIDEBAR (kiểu hình 1, dài hết màn hình, có nút thu/mở) + LAYOUT
 // =====================================================================
-function Sidebar({ currentPage, setCurrentPage }) {
-  const menuItems = [
-    { id: 'dashboard', name: 'Dashboard' },
-    { id: 'tracuu', name: 'Tra cứu' },
-    { id: 'bom', name: 'BOM' },
-    { id: 'indonhang', name: 'In đơn hàng' },
-    { id: 'kanban', name: 'Kanban' },
-    { id: 'phanquyen', name: 'Phân quyền' },
-  ];
+const MENU = [
+  { group: 'Tổng hợp', icon: 'fa-chart-pie', items: [
+    { id: 'dashboard', name: 'Dashboard', icon: 'fa-gauge-high' } ] },
+  { group: 'Theo dõi sản xuất', icon: 'fa-chart-column', items: [
+    { id: 'tracuu', name: 'Tra cứu', icon: 'fa-table-list', badge: 'tracuu' },
+    { id: 'bom', name: 'BOM', icon: 'fa-cubes' } ] },
+  { group: 'Đơn hàng', icon: 'fa-clipboard-list', items: [
+    { id: 'indonhang', name: 'In đơn hàng', icon: 'fa-print' },
+    { id: 'kanban', name: 'Kanban', icon: 'fa-tags', badge: 'kanban' } ] },
+  { group: 'Hệ thống', icon: 'fa-gear', items: [
+    { id: 'phanquyen', name: 'Phân quyền', icon: 'fa-user-shield' } ] },
+];
+
+function Sidebar({ currentPage, setCurrentPage, collapsed, setCollapsed, counts }) {
   return (
-    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
-      <div className="h-16 flex items-center justify-center border-b border-gray-100">
-        <h2 className="text-lg font-bold text-primary tracking-wide">PRODUCTION CONTROL</h2>
+    <aside className={'sb h-full bg-white border-r border-gray-200 flex flex-col ' + (collapsed ? 'collapsed' : '')}>
+      {/* Logo + PRODUCTION CONTROL */}
+      <div className="flex flex-col items-center justify-center border-b border-gray-100" style={{ height: 76 }}>
+        <Logo collapsed={collapsed} />
+        {!collapsed && <h2 className="text-[11px] font-extrabold text-primary tracking-[0.18em] mt-1">PRODUCTION CONTROL</h2>}
       </div>
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
-        {menuItems.map(item => (
-          <div key={item.id} onClick={() => setCurrentPage(item.id)}
-               className={`flex items-center px-4 py-2.5 rounded-lg cursor-pointer transition text-sm font-medium
-                 ${currentPage === item.id ? 'bg-blue-50 text-primary' : 'text-gray-500 hover:bg-gray-50 hover:text-primary'}`}>
-            {item.name}
+
+      <nav className="flex-1 overflow-y-auto py-2">
+        {MENU.map(g => (
+          <div key={g.group}>
+            <div className="sb-group" title={g.group}>
+              <i className={`fa-solid ${g.icon}`}></i>{!collapsed && <span>{g.group}</span>}
+            </div>
+            {g.items.map(item => (
+              <div key={item.id} title={item.name} onClick={() => setCurrentPage(item.id)}
+                   className={'sb-item ' + (currentPage === item.id ? 'on' : '')}>
+                <i className={`fa-solid ${item.icon}`}></i>
+                {!collapsed && <span>{item.name}</span>}
+                {!collapsed && item.badge && counts[item.badge] != null && <span className="sb-badge">{Number(counts[item.badge]).toLocaleString('vi-VN')}</span>}
+              </div>
+            ))}
           </div>
         ))}
       </nav>
-      <div className="border-t border-gray-100 p-4">
-        <p className="text-xs text-gray-400">Xưởng GCCK-CX · THACO INDUSTRIES</p>
-      </div>
+
+      {/* Nút thu / mở sidebar ở cuối */}
+      <button className="sb-toggle" onClick={() => setCollapsed(!collapsed)} title={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}>
+        <i className={`fa-solid ${collapsed ? 'fa-angles-right' : 'fa-angles-left'}`}></i>
+        {!collapsed && <span>Thu gọn menu</span>}
+      </button>
     </aside>
   );
 }
 
 function MainApp() {
   const [currentPage, setCurrentPage] = useState('dashboard');
+  const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('sb_collapsed') === '1'; } catch (e) { return false; } });
+  const [counts, setCounts] = useState({});
+
+  useEffect(() => { try { localStorage.setItem('sb_collapsed', collapsed ? '1' : '0'); } catch (e) {} }, [collapsed]);
+
+  useEffect(() => {
+    (async () => {
+      const a = await supabase.from(TB_BOM).select('*', { count: 'exact', head: true });
+      const b = await supabase.from(TB_KANBAN).select('*', { count: 'exact', head: true });
+      setCounts({ tracuu: a.count, kanban: b.count });
+    })();
+  }, []);
 
   return (
-    <div className="flex h-screen overflow-hidden">
-      <div className="no-print h-full"><Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} /></div>
-      <main className="flex-1 overflow-y-auto p-6">
-        {currentPage === 'dashboard' && <Dashboard />}
-        {currentPage === 'tracuu' && <TraCuu />}
-        {currentPage === 'bom' && <Bom />}
-        {currentPage === 'indonhang' && <InDonHang />}
-        {currentPage === 'kanban' && <Kanban />}
-        {currentPage === 'phanquyen' && <PhanQuyen />}
-      </main>
+    <div className="app-shell flex h-screen overflow-hidden">
+      <div className="no-print h-screen"><Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} collapsed={collapsed} setCollapsed={setCollapsed} counts={counts} /></div>
+      <div className="app-col flex-1 flex flex-col min-w-0 h-screen">
+        <header className="no-print h-14 flex items-center justify-end gap-3 px-6 bg-white border-b border-gray-200">
+          <span className="text-xs font-semibold text-slate-600"><i className="fa-solid fa-user mr-1.5 text-primary"></i>Admin</span>
+          <button className="btn" onClick={() => location.reload()}><i className="fa-solid fa-rotate"></i> Làm mới</button>
+        </header>
+        <main className="app-main flex-1 overflow-y-auto p-5">
+          {currentPage === 'dashboard' && <Dashboard />}
+          {currentPage === 'tracuu' && <TraCuu />}
+          {currentPage === 'bom' && <Bom />}
+          {currentPage === 'indonhang' && <InDonHang />}
+          {currentPage === 'kanban' && <Kanban />}
+          {currentPage === 'phanquyen' && <PhanQuyen />}
+        </main>
+      </div>
     </div>
   );
 }
