@@ -84,6 +84,27 @@
   .tem .qrcell { padding:4px; }
   .qr-box svg { width:100%; height:100%; display:block; }
 
+  /* ---------- KANBAN: khung cố định, chỉ vùng tem cuộn ---------- */
+  .kb-root { height:calc(100vh - 96px); display:flex; flex-direction:column; }   /* 96 = header 56 + padding main 40 */
+  .kb-top  { flex:0 0 auto; }
+  .kb-scroll { flex:1 1 auto; min-height:0; overflow-y:auto; padding:14px 12px 20px; background:#e3e9f1;
+               border:1px solid var(--line); border-radius:14px; }
+  /* Tem co theo số tem/hàng: --ss = hệ số thu nhỏ (JS tính), khoảng cách giữa tem = --gap */
+  .tem-wrap { display:flex; flex-wrap:wrap; gap:var(--gap,10px); align-content:flex-start; }
+  .tem-page { position:relative; flex:0 0 auto; background:#fff; box-shadow:0 1px 4px rgba(15,23,42,.28);
+              width:calc(600px * var(--ss,1)); height:calc(400px * var(--ss,1)); }
+  .tem-page .tem { transform:scale(var(--ss,1)); transform-origin:0 0; }
+  /* Số tờ in: nhãn đỏ chữ trắng, nhỏ, nhô ở góc trên phải (giống số mũ) — không in ra giấy */
+  .tem-no { position:absolute; top:-8px; right:-6px; z-index:20; min-width:20px; height:18px; padding:0 6px;
+            border-radius:9px; background:#dc2626; color:#fff; font-size:11px; font-weight:800; line-height:18px;
+            text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.4); pointer-events:none; }
+
+  /* ---------- IN ĐƠN HÀNG: cỡ chữ bảng Định mức ---------- */
+  table.erp.dm td { font-size:32px; line-height:1.2; padding:8px 10px; }
+  table.erp.dm td.sl   { font-size:46px; font-weight:800; }
+  table.erp.dm td.bold { font-weight:800; }
+  table.erp.dm td.note { font-size:12.5px; font-weight:400; }   /* Ghi chú giữ cỡ cũ */
+
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
     .no-print { display:none !important; }
@@ -96,6 +117,13 @@
     .tem-page .tem { transform:var(--tf); transform-origin:0 0; }
     table.erp thead th { position:static; }
     .print-sheet table { font-size:9px; }
+    table.erp.dm td.note { font-size:9px; }
+    .kb-root { height:auto !important; display:block !important; }
+    .kb-top  { display:none !important; }
+    .kb-scroll { overflow:visible !important; height:auto !important; padding:0 !important; background:none !important; border:none !important; border-radius:0 !important; }
+    .tem-wrap { gap:0 !important; }
+    .tem-page { box-shadow:none !important; }
+    .tem-no { display:none !important; }
   }
 </style>
 </head>
@@ -583,17 +611,17 @@ function InDonHang() {
 
       {rows.length > 0 && !loading && (
         <div className="print-sheet card overflow-auto p-2">
-          <table className="erp" style={{ minWidth: 1500 }}>
+          <table className="erp dm" style={{ minWidth: 1500 }}>
             <thead>
               <tr>
-                <th colSpan={TOTAL_COLS} style={{ background: '#fff', color: '#000', fontSize: 15, borderBottom: '1px solid #000' }}>
-                  ĐỊNH MỨC VẬT TƯ<br /><span style={{ fontSize: 12 }}>XƯỞNG: Gia Công Cơ Khí Chính xác</span>
+                <th colSpan={TOTAL_COLS} style={{ background: '#fff', color: '#000', fontSize: 46, lineHeight: 1.25, borderBottom: '1px solid #000' }}>
+                  ĐỊNH MỨC VẬT TƯ<br /><span>XƯỞNG: Gia Công Cơ Khí Chính xác</span>
                 </th>
               </tr>
               <tr>
                 {['TT', 'MSCT', 'Tên chi tiết', 'Vật liệu', 'Dài', 'Rộng', 'Dày', 'Hình/ hộp', 'Dn', 'Dt', 'SL/SP', 'SL/ĐH'].map((h, i) => (
                   <th key={h} rowSpan={3} style={{ background: '#fff', color: '#000', border: '1px solid #000', minWidth: i === 2 ? 220 : i === 1 ? 110 : 52 }}>
-                    {i === 1 && <div style={{ fontSize: 9, fontWeight: 600 }}>{lsxShown}</div>}{h}
+                    {h}
                   </th>
                 ))}
                 <th colSpan={NC} style={{ background: '#ffff00', color: '#000', border: '1px solid #000' }}>KH GH {khgh && `: ${khgh}`}</th>
@@ -604,7 +632,7 @@ function InDonHang() {
               </tr>
               <tr>
                 {Array.from({ length: NC }, (_, i) => (
-                  <th key={i} style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 78 }}>NC{i + 1}</th>
+                  <th key={i} style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 150 }}>NC{i + 1}</th>
                 ))}
                 <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên giao<br /><span style={{ fontSize: 9 }}>(Ký và ghi rõ họ tên)</span></th>
                 <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên nhận<br /><span style={{ fontSize: 9 }}>(Ký và ghi rõ họ tên)</span></th>
@@ -622,9 +650,9 @@ function InDonHang() {
                 const bd = { border: '1px solid #000' };
                 return (
                   <tr key={r.id}>
-                    <td className="ctr" style={bd}>{cell(r, 'B') || idx + 1}</td>
+                    <td className="ctr bold" style={bd}>{cell(r, 'B') || idx + 1}</td>
                     <td style={bd}>{cell(r, 'Q')}</td>
-                    <td style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'R')}</td>
+                    <td className="bold" style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'R')}</td>
                     <td className="ctr" style={bd}>{cell(r, 'U')}</td>
                     <td className="ctr" style={bd}>{cell(r, 'AB')}</td>
                     <td className="ctr" style={bd}>{cell(r, 'AC')}</td>
@@ -633,13 +661,13 @@ function InDonHang() {
                     <td className="ctr" style={bd}>{cell(r, 'AF')}</td>
                     <td className="ctr" style={bd}>{cell(r, 'AG')}</td>
                     <td className="ctr" style={bd}>{cell(r, 'AI')}</td>
-                    <td className="ctr" style={{ ...bd, fontWeight: 700 }}>{cell(r, 'AJ')}</td>
+                    <td className="ctr sl" style={bd}>{cell(r, 'AJ')}</td>
                     {Array.from({ length: NC }, (_, i) => (
-                      <td key={i} className="ctr" style={{ ...bd, whiteSpace: 'normal', fontSize: 11 }}>{steps[i] ? steps[i].label : ''}</td>
+                      <td key={i} className="ctr bold" style={{ ...bd, whiteSpace: 'normal' }}>{steps[i] ? steps[i].label : ''}</td>
                     ))}
                     <td style={bd}></td>
                     <td style={bd}></td>
-                    <td style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'EZ')}</td>
+                    <td className="note" style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'EZ')}</td>
                   </tr>
                 );
               })}
@@ -826,7 +854,7 @@ function ImportKanbanModal({ onClose, onDone }) {
   );
 }
 
-function Kanban() {
+function Kanban({ active }) {
   const [ver, setVer] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const lsxList = useLsxList(ver);
@@ -839,20 +867,31 @@ function Kanban() {
   const [showAll, setShowAll] = useState(false);
   const [printing, setPrinting] = useState(false);
   const PAGE = 12;
+  const GAP = 10;                                   // khoảng cách giữa các tem (px) — muốn sát hơn thì giảm số này
 
-  // ---- Khổ giấy tem (mm) — nhập đúng khổ giấy đã cài trong driver Zebra ----
+  // ---- Khổ giấy tem (mm) + số tem trên 1 hàng (lưu lại trong trình duyệt) ----
   const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } };
   const [pw, setPw] = useState(() => Number(lsGet('tem_w', 150)) || 150);
   const [ph, setPh] = useState(() => Number(lsGet('tem_h', 100)) || 100);
   const [rot, setRot] = useState(() => lsGet('tem_rot', '0') === '1');
-  useEffect(() => { try { localStorage.setItem('tem_w', pw); localStorage.setItem('tem_h', ph); localStorage.setItem('tem_rot', rot ? '1' : '0'); } catch (e) {} }, [pw, ph, rot]);
-  useEffect(() => {                                  // báo cho trình duyệt khổ giấy khi in (chỉ khi đang ở tab Kanban)
+  const [perRow, setPerRow] = useState(() => Number(lsGet('tem_perrow', 2)) || 2);
+  useEffect(() => {
+    try {
+      localStorage.setItem('tem_w', pw); localStorage.setItem('tem_h', ph);
+      localStorage.setItem('tem_rot', rot ? '1' : '0'); localStorage.setItem('tem_perrow', perRow);
+    } catch (e) {}
+  }, [pw, ph, rot, perRow]);
+
+  // Khổ giấy khi in — chỉ áp dụng lúc đang đứng ở tab Kanban (tránh ảnh hưởng tab In đơn hàng)
+  useEffect(() => {
+    if (!active) return;
     let el = document.getElementById('tem-page-style');
     if (!el) { el = document.createElement('style'); el.id = 'tem-page-style'; document.head.appendChild(el); }
     el.textContent = `@page { size: ${pw}mm ${ph}mm; margin: 0; }`;
     return () => { el.textContent = ''; };
-  }, [pw, ph]);
-  const printVars = useMemo(() => {                  // co tem thiết kế 600x400px vừa khổ giấy, canh giữa
+  }, [pw, ph, active]);
+
+  const printVars = useMemo(() => {                  // co tem 600x400px vừa khổ giấy, canh giữa
     const PX = 96 / 25.4, DW = 600, DH = 400, W = pw * PX, H = ph * PX;
     let tf;
     if (!rot) {
@@ -864,6 +903,23 @@ function Kanban() {
     }
     return { '--tf': tf, '--pw': pw + 'mm', '--ph': ph + 'mm' };
   }, [pw, ph, rot]);
+
+  // ---- Đo bề rộng khung để tính tỉ lệ thu nhỏ tem theo số tem/hàng ----
+  const scrollRef = useRef(null);
+  const [boxW, setBoxW] = useState(0);
+  useEffect(() => {
+    const el = scrollRef.current; if (!el) return;
+    const measure = () => { const w = el.clientWidth; if (w > 0) setBoxW(w); };   // tab đang ẩn (w=0) thì bỏ qua
+    measure();
+    const ro = new ResizeObserver(measure); ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const scale = useMemo(() => {
+    if (!boxW) return 1;
+    const inner = boxW - 24 - 12;                    // trừ padding hai bên + chừa chỗ cho nhãn số tờ
+    const s = (inner - GAP * (perRow - 1)) / perRow / 600;
+    return Math.floor(Math.min(1, Math.max(0.2, s)) * 1000) / 1000;
+  }, [boxW, perRow]);
 
   const load = async (value) => {
     const v = (value || '').trim();
@@ -893,6 +949,12 @@ function Kanban() {
 
   const shown = showAll ? filtered : filtered.slice(0, page * PAGE);
 
+  // Cuộn gần cuối khung thì tự tải thêm tem
+  const onScroll = (e) => {
+    const t = e.currentTarget;
+    if (!showAll && shown.length < filtered.length && t.scrollTop + t.clientHeight >= t.scrollHeight - 300) setPage(p => p + 1);
+  };
+
   const doPrint = () => { setShowAll(true); setPrinting(true); };
   useEffect(() => {
     if (!(printing && showAll)) return;
@@ -906,56 +968,71 @@ function Kanban() {
   }, []);
 
   return (
-    <div className="space-y-3">
-      <div className="no-print card p-3 flex flex-wrap items-center gap-3">
-        <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
-        <input list="lsx-kanban-list" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()}
-          placeholder="Nhập lệnh sản xuất rồi nhấn Enter…" className="inp" style={{ width: 280 }} />
-        <datalist id="lsx-kanban-list">{lsxList.map(l => <option key={l} value={l} />)}</datalist>
-        <button className="btn btn-primary" onClick={search}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
-        <button className="btn" onClick={() => load(lsx)}><i className="fa-solid fa-rotate"></i> Làm mới</button>
-        <button className="btn ml-auto" onClick={() => setImportOpen(true)}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>
-        <button className="btn btn-green" onClick={doPrint} disabled={!filtered.length} style={{ opacity: filtered.length ? 1 : .5 }}>
-          <i className="fa-solid fa-print"></i> In tem ({filtered.length})
-        </button>
+    <div className="kb-root">
+      {/* ===== PHẦN CỐ ĐỊNH (không cuộn): thanh lệnh, khổ giấy, chọn công đoạn ===== */}
+      <div className="kb-top no-print space-y-3 pb-3">
+        <div className="card p-3 flex flex-wrap items-center gap-3">
+          <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
+          <input list="lsx-kanban-list" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()}
+            placeholder="Nhập lệnh sản xuất rồi nhấn Enter…" className="inp" style={{ width: 280 }} />
+          <datalist id="lsx-kanban-list">{lsxList.map(l => <option key={l} value={l} />)}</datalist>
+          <button className="btn btn-primary" onClick={search}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
+          <button className="btn" onClick={() => load(lsx)}><i className="fa-solid fa-rotate"></i> Làm mới</button>
+          <button className="btn ml-auto" onClick={() => setImportOpen(true)}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>
+          <button className="btn btn-green" onClick={doPrint} disabled={!filtered.length} style={{ opacity: filtered.length ? 1 : .5 }}>
+            <i className="fa-solid fa-print"></i> In tem ({filtered.length})
+          </button>
+        </div>
+
+        <div className="card p-3 flex flex-wrap items-center gap-3 text-xs">
+          <span className="font-bold text-slate-500">Khổ giấy tem (mm)</span>
+          <input type="number" min="30" value={pw} onChange={e => setPw(Number(e.target.value) || 150)} className="inp" style={{ width: 72 }} />
+          <span>×</span>
+          <input type="number" min="30" value={ph} onChange={e => setPh(Number(e.target.value) || 100)} className="inp" style={{ width: 72 }} />
+          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={rot} onChange={e => setRot(e.target.checked)} /> Xoay tem 90°</label>
+          <span className="font-bold text-slate-500 ml-4">Hiển thị</span>
+          {[1, 2, 3, 4].map(n => (
+            <button key={n} className={'pill ' + (perRow === n ? 'on' : '')} onClick={() => setPerRow(n)}>{n} tem/hàng</button>
+          ))}
+          <span className="text-gray-400">Khi in: mỗi tem 1 trang. Giấy ngang 150×100 → không xoay; giấy dọc 100×150 → tích “Xoay tem 90°”.</span>
+        </div>
+
+        {rows.length > 0 && (
+          <div className="card p-3 flex flex-wrap items-center gap-2" style={{ maxHeight: 104, overflowY: 'auto' }}>
+            <span className="text-xs font-bold text-slate-500 mr-1">Công đoạn 1</span>
+            <button className={'pill ' + (stage === '' ? 'on' : '')} onClick={() => { setStage(''); setPage(1); }}>Tất cả ({rows.length})</button>
+            {stageList.map(s => (
+              <button key={s.L} className={'pill ' + (stage === s.L ? 'on' : '')} onClick={() => { setStage(s.L); setPage(1); }}>
+                {s.label} ({s.count})
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      <div className="no-print card p-3 flex flex-wrap items-center gap-3 text-xs">
-        <span className="font-bold text-slate-500">Khổ giấy tem (mm)</span>
-        <input type="number" min="30" value={pw} onChange={e => setPw(Number(e.target.value) || 150)} className="inp" style={{ width: 72 }} />
-        <span>×</span>
-        <input type="number" min="30" value={ph} onChange={e => setPh(Number(e.target.value) || 100)} className="inp" style={{ width: 72 }} />
-        <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={rot} onChange={e => setRot(e.target.checked)} /> Xoay tem 90°</label>
-        <span className="text-gray-400">Mỗi tem 1 trang. Giấy ngang 150×100 → không xoay; giấy dọc 100×150 → tích “Xoay tem 90°”.</span>
-      </div>
+      {/* ===== PHẦN CUỘN: chỉ có tem ===== */}
+      <div className="kb-scroll" ref={scrollRef} onScroll={onScroll}>
+        {loading && <div className="no-print card p-6 text-center text-gray-400">Đang tải…</div>}
+        {!loading && !lsx && <div className="no-print card p-6 text-center text-gray-400">Nhập lệnh sản xuất rồi nhấn Enter để hiển thị tem Kanban.</div>}
+        {!loading && lsx && filtered.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không có tem nào.</div>}
 
-      {rows.length > 0 && (
-        <div className="no-print card p-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs font-bold text-slate-500 mr-1">Công đoạn 1</span>
-          <button className={'pill ' + (stage === '' ? 'on' : '')} onClick={() => { setStage(''); setPage(1); }}>Tất cả ({rows.length})</button>
-          {stageList.map(s => (
-            <button key={s.L} className={'pill ' + (stage === s.L ? 'on' : '')} onClick={() => { setStage(s.L); setPage(1); }}>
-              {s.label} ({s.count})
-            </button>
+        <div className="tem-wrap" style={{ ...printVars, '--ss': scale, '--gap': GAP + 'px' }}>
+          {shown.map((r, i) => (
+            <div className="tem-page" key={r.id}>
+              <span className="tem-no no-print" title="Số tờ in">{i + 1}</span>
+              <TemKanban r={r} />
+            </div>
           ))}
         </div>
-      )}
 
-      {loading && <div className="no-print card p-6 text-center text-gray-400">Đang tải…</div>}
-      {!loading && !lsx && <div className="no-print card p-6 text-center text-gray-400">Nhập lệnh sản xuất rồi nhấn Enter để hiển thị tem Kanban.</div>}
-      {!loading && lsx && filtered.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không có tem nào.</div>}
-
-      <div className="tem-wrap grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(620px, 1fr))', ...printVars }}>
-        {shown.map(r => <div className="tem-page" key={r.id}><TemKanban r={r} /></div>)}
+        {!showAll && shown.length < filtered.length && (
+          <div className="no-print text-center mt-4">
+            <button className="btn" onClick={() => setPage(p => p + 1)}>Xem thêm ({filtered.length - shown.length} tem)</button>
+          </div>
+        )}
       </div>
 
       {importOpen && <ImportKanbanModal onClose={() => setImportOpen(false)} onDone={() => { setVer(v => v + 1); load(lsx); }} />}
-
-      {!showAll && shown.length < filtered.length && (
-        <div className="no-print text-center">
-          <button className="btn" onClick={() => setPage(p => p + 1)}>Xem thêm ({filtered.length - shown.length} tem)</button>
-        </div>
-      )}
     </div>
   );
 }
@@ -1076,6 +1153,8 @@ function MainApp() {
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('sb_collapsed') === '1'; } catch (e) { return false; } });
   const [counts, setCounts] = useState({});
+  const [visited, setVisited] = useState({});          // tab nào đã mở thì giữ lại (ẩn đi chứ không huỷ) để không mất lệnh đang chọn
+  useEffect(() => { setVisited(v => v[currentPage] ? v : { ...v, [currentPage]: true }); }, [currentPage]);
 
   useEffect(() => { try { localStorage.setItem('sb_collapsed', collapsed ? '1' : '0'); } catch (e) {} }, [collapsed]);
 
@@ -1099,8 +1178,8 @@ function MainApp() {
           {currentPage === 'dashboard' && <Dashboard />}
           {currentPage === 'tracuu' && <TraCuu />}
           {currentPage === 'bom' && <Bom />}
-          {currentPage === 'indonhang' && <InDonHang />}
-          {currentPage === 'kanban' && <Kanban />}
+          {visited.indonhang && <div style={{ display: currentPage === 'indonhang' ? 'block' : 'none' }}><InDonHang /></div>}
+          {visited.kanban && <div style={{ display: currentPage === 'kanban' ? 'block' : 'none' }}><Kanban active={currentPage === 'kanban'} /></div>}
           {currentPage === 'phanquyen' && <PhanQuyen />}
         </main>
       </div>
