@@ -1,466 +1,625 @@
 <!DOCTYPE html>
 <html lang="vi">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Production Control - ERP</title>
-    
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <!-- Thư viện quét mã QR -->
-    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
-    
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    colors: { navy: '#0f172a', primary: '#2563eb', accent: '#f97316' }
-                }
-            }
-        }
-    </script>
-    <style>
-        body { background-color: #f3f4f6; font-family: sans-serif; }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Production Control v2 - ERP</title>
+
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+
+<script>
+  tailwind.config = {
+    theme: { extend: { colors: { navy: '#0f172a', primary: '#2563eb', accent: '#f97316' } } }
+  }
+</script>
+<style>
+  body { background-color: #f3f4f6; font-family: sans-serif; }
+  ::-webkit-scrollbar { height: 10px; width: 10px; }
+  ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 6px; }
+  table.data-grid th { position: sticky; top: 0; z-index: 10; }
+  table.data-grid td, table.data-grid th { white-space: nowrap; }
+  @media print {
+    .no-print { display: none !important; }
+    .print-area { display: block !important; }
+    body { background: #fff; }
+  }
+</style>
 </head>
 <body>
-    <div id="root"></div>
+<div id="root"></div>
 
-    <script type="text/babel">
-        const { useState, useEffect, createContext, useContext, useRef } = React;
+<script type="text/babel">
+const { useState, useEffect, createContext, useContext, useMemo, useRef } = React;
 
-        // ==========================================
-        // 1. CẤU HÌNH SUPABASE (ĐÃ ĐIỀN ĐÚNG THÔNG TIN CỦA BẠN)
-        // ==========================================
-        const SUPABASE_URL = "https://dwrwvxtjraerrkzhzaqs.supabase.co"; 
-        const SUPABASE_ANON_KEY = "sb_publishable_oZrP8Gf_ASPRMkQEQ6BBCw_s6vd1gGT"; 
-        
-        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// =====================================================================
+// 1. CẤU HÌNH SUPABASE — THAY URL/KEY NẾU CẦN
+// =====================================================================
+const SUPABASE_URL = "https://dwrwvxtjraerrkzhzaqs.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_oZrP8Gf_ASPRMkQEQ6BBCw_s6vd1gGT";
+const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        // ==========================================
-        // 2. QUẢN LÝ ĐĂNG NHẬP
-        // ==========================================
-        const AuthContext = createContext(null);
+// Tên bảng — đổi ở đây nếu Supabase của bạn đặt tên khác
+const TB_BOM = "Bomdonhang";
+const TB_TIEN = "KQ_Tien";
+const TB_PHAY = "KQ_Phay";
+const TB_NGUOI = "KQ_Nguoi";
 
-        function AuthProvider({ children }) {
-            const [session, setSession] = useState(null);
-            const [profile, setProfile] = useState(null);
-            const [loading, setLoading] = useState(true);
+// Định nghĩa cột hiển thị cho Tra cứu / BOM (khớp đúng thứ tự người dùng yêu cầu)
+const BOM_COLUMNS = [
+  { key: "stt", label: "STT", w: 60 },
+  { key: "khgh", label: "KHGH", w: 100 },
+  { key: "lsx", label: "LSX", w: 110 },
+  { key: "san_pham", label: "Sản phẩm", w: 130 },
+  { key: "stt_ct", label: "STT CT", w: 70 },
+  { key: "msct", label: "MSCT", w: 120 },
+  { key: "ten_chi_tiet", label: "Tên chi tiết", w: 220 },
+  { key: "vat_lieu", label: "Vật liệu", w: 90 },
+  { key: "dai", label: "Dài", w: 70 },
+  { key: "rong", label: "Rộng", w: 70 },
+  { key: "day", label: "Dày", w: 70 },
+  { key: "hinh_hop", label: "Hình/hộp", w: 90 },
+  { key: "dn", label: "Dn", w: 70 },
+  { key: "dt", label: "Dt", w: 70 },
+  { key: "sl_bo", label: "SL/BỘ", w: 70 },
+  { key: "sl_dh", label: "SL/ĐH", w: 70 },
+  { key: "khoi_luong", label: "Khối lượng", w: 90 },
+  { key: "cong_doan_truoc", label: "Công đoạn trước", w: 130 },
+  { key: "duc_nhom", label: "Đúc nhôm", w: 90 },
+  { key: "cua_vong", label: "Cưa vòng", w: 90 },
+  { key: "tien", label: "Tiện", w: 70 },
+  { key: "phay", label: "Phay", w: 70 },
+  { key: "nguoi", label: "Nguội", w: 70 },
+  { key: "nhiet", label: "Nhiệt", w: 70 },
+  { key: "cong_doan_sau", label: "Công đoạn sau", w: 130 },
+  { key: "ghi_chu_dmvt", label: "Ghi chú ĐMVT", w: 150 },
+  { key: "id_key", label: "ID key", w: 120 },
+  { key: "nhan_vat_tu", label: "Nhận VT", w: 80, type: "bool" },
+  { key: "giao_hang", label: "Giao hàng", w: 80, type: "bool" },
+  { key: "ghi_chu", label: "Ghi chú", w: 180 },
+];
 
-            useEffect(() => {
-                supabase.auth.getSession().then(({ data: { session } }) => {
-                    setSession(session);
-                    if (session) fetchProfile(session.user.id);
-                    else setLoading(false);
-                });
+// =====================================================================
+// 2. (đã bỏ đăng nhập — app mở trực tiếp, không cần tài khoản/mật khẩu)
+// =====================================================================
 
-                const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-                    setSession(session);
-                    if (session) fetchProfile(session.user.id);
-                    else { setProfile(null); setLoading(false); }
-                });
+// =====================================================================
+// 3. DASHBOARD
+// =====================================================================
+function Dashboard() {
+  const [stats, setStats] = useState({ tongDH: 0, tongDong: 0, choNhanVT: 0, choGiao: 0 });
+  const [recentLsx, setRecentLsx] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-                return () => subscription.unsubscribe();
-            }, []);
+  useEffect(() => { load(); }, []);
 
-            const fetchProfile = async (userId) => {
-                const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-                setProfile(data);
-                setLoading(false);
-            };
+  const load = async () => {
+    setLoading(true);
+    const { data, count: tongDong } = await supabase.from(TB_BOM).select('lsx, nhan_vat_tu, giao_hang', { count: 'exact' });
+    if (data) {
+      const lsxSet = new Set(data.map(d => d.lsx));
+      const choNhanVT = data.filter(d => !d.nhan_vat_tu).length;
+      const choGiao = data.filter(d => !d.giao_hang).length;
+      setStats({ tongDH: lsxSet.size, tongDong: tongDong ?? data.length, choNhanVT, choGiao });
 
-            const signIn = async (email, password) => await supabase.auth.signInWithPassword({ email, password });
-            const signOut = async () => await supabase.auth.signOut();
+      const order = [];
+      for (const lsx of lsxSet) { if (!order.includes(lsx)) order.push(lsx); }
+      setRecentLsx(order.slice(-8).reverse());
+    }
+    setLoading(false);
+  };
 
-            return (
-                <AuthContext.Provider value={{ session, profile, loading, signIn, signOut }}>
-                    {children}
-                </AuthContext.Provider>
-            );
-        }
-        const useAuth = () => useContext(AuthContext);
+  const cards = [
+    { title: 'Tổng số LSX', value: stats.tongDH, color: 'text-blue-600' },
+    { title: 'Tổng dòng BOM', value: stats.tongDong, color: 'text-navy' },
+    { title: 'Chờ nhận vật tư', value: stats.choNhanVT, color: 'text-orange-500' },
+    { title: 'Chờ giao hàng', value: stats.choGiao, color: 'text-red-500' },
+  ];
 
-        // ==========================================
-        // 3. GIAO DIỆN ĐĂNG NHẬP
-        // ==========================================
-        function Login() {
-            const [email, setEmail] = useState('');
-            const [password, setPassword] = useState('');
-            const [errorMsg, setErrorMsg] = useState('');
-            const { signIn } = useAuth();
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard Tổng Quan</h1>
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        {cards.map((c, i) => (
+          <div key={i} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+            <h3 className="text-gray-500 text-sm font-medium">{c.title}</h3>
+            <p className={`text-3xl font-bold mt-2 ${c.color}`}>{loading ? '…' : c.value}</p>
+          </div>
+        ))}
+      </div>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-6">
+        <h3 className="font-semibold text-gray-700 mb-4">Lệnh sản xuất gần đây</h3>
+        <div className="flex flex-wrap gap-2">
+          {recentLsx.length === 0 && !loading && <p className="text-gray-400 text-sm">Chưa có dữ liệu.</p>}
+          {recentLsx.map(lsx => (
+            <span key={lsx} className="px-3 py-1 bg-blue-50 text-primary rounded-full text-sm font-medium">{lsx}</span>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
-            const handleLogin = async (e) => {
-                e.preventDefault();
-                const { error } = await signIn(email, password);
-                if (error) setErrorMsg(error.message);
-            };
+// =====================================================================
+// 4. TRA CỨU — bảng đầy đủ cột, tìm kiếm, toggle Nhận VT / Giao hàng
+// =====================================================================
+function TraCuu() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const pendingSaves = useRef(new Set());
 
-            return (
-                <div className="min-h-screen flex items-center justify-center bg-navy">
-                    <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-md">
-                        <h1 className="text-2xl font-bold text-center text-navy mb-6">PRODUCTION CONTROL</h1>
-                        {errorMsg && <div className="bg-red-100 text-red-600 p-3 rounded mb-4 text-sm">{errorMsg}</div>}
-                        <form onSubmit={handleLogin} className="space-y-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Email</label>
-                                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required className="mt-1 block w-full border border-gray-300 rounded-md p-2" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">Mật khẩu</label>
-                                <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required className="mt-1 block w-full border border-gray-300 rounded-md p-2" />
-                            </div>
-                            <button type="submit" className="w-full bg-primary text-white p-2 rounded-md hover:bg-blue-700 transition">Đăng nhập</button>
-                        </form>
-                    </div>
-                </div>
-            );
-        }
+  useEffect(() => { load(); }, []);
 
-        // ==========================================
-        // 4. DASHBOARD
-        // ==========================================
-        function Dashboard() {
-            return (
-                <div>
-                    <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard Tổng Quan</h1>
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                        {[
-                            { title: 'Tổng đơn hàng', value: '1', color: 'bg-blue-500' },
-                            { title: 'Đang sản xuất', value: '0', color: 'bg-orange-500' },
-                            { title: 'Đã hoàn thành', value: '0', color: 'bg-green-500' },
-                            { title: 'Đơn trễ tiến độ', value: '0', color: 'bg-red-500' },
-                        ].map((item, idx) => (
-                            <div key={idx} className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
-                                <h3 className="text-gray-500 text-sm font-medium">{item.title}</h3>
-                                <p className="text-3xl font-bold mt-2">{item.value}</p>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            );
-        }
+  const load = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from(TB_BOM).select('*').order('lsx', { ascending: false }).order('stt_ct');
+    if (!error) setRows(data || []);
+    setLoading(false);
+  };
 
-        // ==========================================
-        // 5. QUẢN LÝ ĐƠN HÀNG & CHI TIẾT BOM
-        // ==========================================
-        function Orders() {
-            const [orders, setOrders] = useState([]);
-            const [isModalOpen, setIsModalOpen] = useState(false);
-            const [isImportModalOpen, setIsImportModalOpen] = useState(false);
-            
-            const [selectedOrder, setSelectedOrder] = useState(null);
-            const [details, setDetails] = useState([]);
+  const filtered = useMemo(() => {
+    if (!q.trim()) return rows;
+    const s = q.trim().toLowerCase();
+    return rows.filter(r =>
+      (r.lsx || '').toLowerCase().includes(s) ||
+      (r.msct || '').toLowerCase().includes(s) ||
+      (r.ten_chi_tiet || '').toLowerCase().includes(s) ||
+      (r.san_pham || '').toLowerCase().includes(s)
+    );
+  }, [rows, q]);
 
-            const [importLsx, setImportLsx] = useState('');
-            const [file, setFile] = useState(null);
-            const [formData, setFormData] = useState({ lsx: '', customer: '', name: '', due_date: '' });
-            const [loading, setLoading] = useState(true);
+  // Optimistic toggle cho Nhận VT / Giao hàng — theo đúng pattern dùng ở app BOM GCCK-CX
+  const toggleBool = async (row, field) => {
+    const key = row.id + '-' + field;
+    if (pendingSaves.current.has(key)) return;
+    pendingSaves.current.add(key);
+    const newVal = !row[field];
+    setRows(prev => prev.map(r => r.id === row.id ? { ...r, [field]: newVal } : r));
+    const { error } = await supabase.from(TB_BOM).update({ [field]: newVal }).eq('id', row.id);
+    if (error) {
+      // rollback nếu lỗi
+      setRows(prev => prev.map(r => r.id === row.id ? { ...r, [field]: !newVal } : r));
+      alert('Lưu thất bại: ' + error.message);
+    }
+    pendingSaves.current.delete(key);
+  };
 
-            useEffect(() => { fetchOrders(); }, []);
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-gray-800">Tra cứu BOM</h1>
+        <input
+          value={q} onChange={e => setQ(e.target.value)}
+          placeholder="Tìm theo LSX / MSCT / Tên chi tiết / Sản phẩm…"
+          className="border border-gray-300 rounded-md px-3 py-2 w-80 text-sm"
+        />
+      </div>
+      <div className="bg-white rounded-lg shadow overflow-auto" style={{ maxHeight: '75vh' }}>
+        <table className="data-grid min-w-full text-sm border-collapse">
+          <thead className="bg-gray-100">
+            <tr>
+              {BOM_COLUMNS.map(c => (
+                <th key={c.key} style={{ minWidth: c.w }} className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-gray-200">{c.label}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={BOM_COLUMNS.length} className="text-center py-6 text-gray-400">Đang tải…</td></tr>
+            ) : filtered.length === 0 ? (
+              <tr><td colSpan={BOM_COLUMNS.length} className="text-center py-6 text-gray-400">Không tìm thấy dữ liệu.</td></tr>
+            ) : filtered.map(r => (
+              <tr key={r.id} className="hover:bg-blue-50/50 border-b border-gray-100">
+                {BOM_COLUMNS.map(c => (
+                  <td key={c.key} className="px-3 py-1.5">
+                    {c.type === 'bool' ? (
+                      <input type="checkbox" checked={!!r[c.key]} onChange={() => toggleBool(r, c.key)} className="w-4 h-4 accent-blue-600 cursor-pointer" />
+                    ) : (r[c.key] ?? '')}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-400 mt-2">{filtered.length} / {rows.length} dòng</p>
+    </div>
+  );
+}
 
-            const fetchOrders = async () => {
-                setLoading(true);
-                const { data, error } = await supabase.from('orders').select('*').order('created_at', { ascending: false });
-                if (!error) setOrders(data);
-                setLoading(false);
-            };
+// =====================================================================
+// 5. BOM — danh sách LSX, xem chi tiết, nhập CSV
+// =====================================================================
+function Bom() {
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedLsx, setSelectedLsx] = useState(null);
+  const [details, setDetails] = useState([]);
+  const [isImportOpen, setIsImportOpen] = useState(false);
+  const [importLsx, setImportLsx] = useState('');
+  const [file, setFile] = useState(null);
 
-            const viewDetails = async (order) => {
-                setSelectedOrder(order);
-                const { data, error } = await supabase.from('order_details').select('*').eq('order_id', order.id).order('stt');
-                if (!error) setDetails(data);
-            };
+  useEffect(() => { fetchOrders(); }, []);
 
-            const handleCreate = async (e) => {
-                e.preventDefault();
-                const { error } = await supabase.from('orders').insert([formData]);
-                if (error) alert("Lỗi: " + error.message);
-                else { setIsModalOpen(false); setFormData({ lsx: '', customer: '', name: '', due_date: '' }); fetchOrders(); }
-            };
+  const fetchOrders = async () => {
+    setLoading(true);
+    const { data } = await supabase.from(TB_BOM).select('lsx, san_pham, khgh').order('created_at', { ascending: false });
+    const map = new Map();
+    (data || []).forEach(d => { if (!map.has(d.lsx)) map.set(d.lsx, d); });
+    setOrders(Array.from(map.values()));
+    setLoading(false);
+  };
 
-            const handleImportBOM = async () => {
-                if (!file || !importLsx) return alert("Vui lòng nhập mã LSX và chọn file CSV!");
-                const reader = new FileReader();
-                reader.onload = async (e) => {
-                    const text = e.target.result;
-                    const lines = text.split('\n').filter(line => line.trim() !== '');
-                    const rows = [];
-                    for (let i = 1; i < lines.length; i++) {
-                        const currentline = lines[i].split(',');
-                        if(currentline.length < 9) continue;
-                        rows.push({
-                            stt: currentline[0], msct: currentline[1], part_name: currentline[2], material: currentline[3],
-                            spec_length: currentline[4] || null, spec_width: currentline[5] || null, spec_thickness: currentline[6] || null, spec_shape: currentline[7] || null,
-                            quantity_required: currentline[8] || 1, production_line: currentline[9] || 'Chưa xếp', note: currentline[10] || ''
-                        });
-                    }
-                    const { data, error } = await supabase.rpc('import_bom_rows', { p_order_lsx: importLsx, p_rows: rows });
-                    if (error) alert("Lỗi khi Import: " + error.message);
-                    else { alert(`Import thành công ${data.inserted} dòng. Thất bại: ${data.failed}`); setIsImportModalOpen(false); fetchOrders(); }
-                };
-                reader.readAsText(file);
-            };
+  const viewDetails = async (lsx) => {
+    setSelectedLsx(lsx);
+    const { data } = await supabase.from(TB_BOM).select('*').eq('lsx', lsx).order('stt_ct');
+    setDetails(data || []);
+  };
 
-            if (selectedOrder) {
-                return (
-                    <div>
-                        <button onClick={() => setSelectedOrder(null)} className="mb-4 text-primary hover:underline">&larr; Quay lại danh sách</button>
-                        <div className="bg-white p-6 rounded shadow mb-6">
-                            <h2 className="text-xl font-bold text-navy">Chi tiết LSX: {selectedOrder.lsx}</h2>
-                            <p className="text-gray-600">Khách hàng: {selectedOrder.customer}</p>
-                        </div>
-                        <div className="bg-white rounded-lg shadow overflow-x-auto">
-                            <table className="min-w-full divide-y divide-gray-200">
-                                <thead className="bg-gray-50">
-                                    <tr>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">STT</th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">MSCT</th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tên chi tiết</th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">SL/ĐH</th>
-                                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Chuyền</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="bg-white divide-y divide-gray-200">
-                                    {details.length === 0 ? <tr><td colSpan="5" className="text-center py-4">Chưa có dữ liệu BOM</td></tr> : 
-                                     details.map(d => (
-                                        <tr key={d.id}>
-                                            <td className="px-4 py-3">{d.stt}</td>
-                                            <td className="px-4 py-3 font-medium">{d.msct}</td>
-                                            <td className="px-4 py-3">{d.part_name}</td>
-                                            <td className="px-4 py-3">{d.quantity_required}</td>
-                                            <td className="px-4 py-3">{d.production_line}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                );
-            }
+  // CSV cột theo đúng thứ tự BOM_COLUMNS (trừ id_key tự sinh, nhan_vat_tu/giao_hang mặc định false)
+  const handleImportBOM = async () => {
+    if (!file || !importLsx) return alert('Vui lòng nhập mã LSX và chọn file CSV!');
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      const lines = e.target.result.split('\n').filter(l => l.trim() !== '');
+      const rows = [];
+      for (let i = 1; i < lines.length; i++) {
+        const c = lines[i].split(',');
+        if (c.length < 16) continue;
+        rows.push({
+          stt: c[0], khgh: c[1], lsx: importLsx, san_pham: c[2], stt_ct: c[3], msct: c[4],
+          ten_chi_tiet: c[5], vat_lieu: c[6], dai: c[7] || null, rong: c[8] || null, day: c[9] || null,
+          hinh_hop: c[10] || null, dn: c[11] || null, dt: c[12] || null, sl_bo: c[13] || null, sl_dh: c[14] || null,
+          khoi_luong: c[15] || null, cong_doan_truoc: c[16] || '', duc_nhom: c[17] || '', cua_vong: c[18] || '',
+          tien: c[19] || '', phay: c[20] || '', nguoi: c[21] || '', nhiet: c[22] || '',
+          cong_doan_sau: c[23] || '', ghi_chu_dmvt: c[24] || '', ghi_chu: c[25] || ''
+        });
+      }
+      const { data, error } = await supabase.rpc('import_bom_rows', { p_rows: rows });
+      if (error) alert('Lỗi khi Import: ' + error.message);
+      else { alert(`Import thành công ${data.inserted} dòng. Thất bại: ${data.failed}`); setIsImportOpen(false); fetchOrders(); }
+    };
+    reader.readAsText(file);
+  };
 
-            return (
-                <div>
-                    <div className="flex justify-between items-center mb-6">
-                        <h1 className="text-2xl font-bold text-gray-800">Quản lý Đơn hàng</h1>
-                        <div className="space-x-3">
-                            <button onClick={() => setIsImportModalOpen(true)} className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">Nhập BOM (CSV)</button>
-                            <button onClick={() => setIsModalOpen(true)} className="bg-primary text-white px-4 py-2 rounded shadow hover:bg-blue-700">+ Tạo Đơn Hàng</button>
-                        </div>
-                    </div>
+  if (selectedLsx) {
+    return (
+      <div>
+        <button onClick={() => setSelectedLsx(null)} className="mb-4 text-primary hover:underline">&larr; Quay lại danh sách</button>
+        <h2 className="text-xl font-bold text-navy mb-4">Chi tiết LSX: {selectedLsx}</h2>
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">STT CT</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">MSCT</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Tên chi tiết</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">SL/ĐH</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Nhận VT</th>
+                <th className="px-4 py-3 text-left font-medium text-gray-500">Giao hàng</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {details.map(d => (
+                <tr key={d.id}>
+                  <td className="px-4 py-3">{d.stt_ct}</td>
+                  <td className="px-4 py-3 font-medium">{d.msct}</td>
+                  <td className="px-4 py-3">{d.ten_chi_tiet}</td>
+                  <td className="px-4 py-3">{d.sl_dh}</td>
+                  <td className="px-4 py-3">{d.nhan_vat_tu ? '✔' : ''}</td>
+                  <td className="px-4 py-3">{d.giao_hang ? '✔' : ''}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
 
-                    <div className="bg-white rounded-lg shadow overflow-hidden">
-                        <table className="min-w-full divide-y divide-gray-200">
-                            <thead className="bg-gray-50">
-                                <tr>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">LSX</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Khách hàng</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tên đơn hàng</th>
-                                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Hành động</th>
-                                </tr>
-                            </thead>
-                            <tbody className="bg-white divide-y divide-gray-200">
-                                {loading ? <tr><td colSpan="4" className="text-center py-4">Đang tải...</td></tr> : 
-                                 orders.map((order) => (
-                                    <tr key={order.id} className="hover:bg-gray-50">
-                                        <td className="px-6 py-4 whitespace-nowrap font-medium text-primary cursor-pointer hover:underline" onClick={() => viewDetails(order)}>{order.lsx}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap">{order.customer}</td>
-                                        <td className="px-6 py-4">{order.name}</td>
-                                        <td className="px-6 py-4">
-                                            <button onClick={() => viewDetails(order)} className="text-primary hover:text-blue-800 text-sm font-medium">Xem BOM</button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Quản lý BOM / Đơn hàng</h1>
+        <button onClick={() => setIsImportOpen(true)} className="bg-green-600 text-white px-4 py-2 rounded shadow hover:bg-green-700">Nhập BOM (CSV)</button>
+      </div>
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">LSX</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">Sản phẩm</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">KHGH</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">Hành động</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {loading ? <tr><td colSpan="4" className="text-center py-4">Đang tải…</td></tr> :
+              orders.map(o => (
+                <tr key={o.lsx} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 font-medium text-primary cursor-pointer hover:underline" onClick={() => viewDetails(o.lsx)}>{o.lsx}</td>
+                  <td className="px-6 py-4">{o.san_pham}</td>
+                  <td className="px-6 py-4">{o.khgh}</td>
+                  <td className="px-6 py-4"><button onClick={() => viewDetails(o.lsx)} className="text-primary hover:text-blue-800 font-medium">Xem BOM</button></td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
 
-                    {isModalOpen && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                            <div className="bg-white p-6 rounded-lg w-full max-w-md shadow-2xl">
-                                <h2 className="text-xl font-bold mb-4">Tạo Đơn Hàng Mới</h2>
-                                <form onSubmit={handleCreate} className="space-y-4">
-                                    <input type="text" placeholder="Mã LSX" value={formData.lsx} onChange={(e) => setFormData({...formData, lsx: e.target.value})} required className="w-full border p-2 rounded" />
-                                    <input type="text" placeholder="Khách hàng" value={formData.customer} onChange={(e) => setFormData({...formData, customer: e.target.value})} className="w-full border p-2 rounded" />
-                                    <input type="text" placeholder="Tên đơn hàng" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} required className="w-full border p-2 rounded" />
-                                    <div className="flex justify-end space-x-3 mt-6">
-                                        <button type="button" onClick={() => setIsModalOpen(false)} className="px-4 py-2 border rounded">Hủy</button>
-                                        <button type="submit" className="px-4 py-2 bg-primary text-white rounded">Lưu</button>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
-                    )}
-                    {isImportModalOpen && (
-                        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-                            <div className="bg-white p-6 rounded-lg w-full max-w-md shadow-2xl">
-                                <h2 className="text-xl font-bold mb-4">Nhập BOM từ CSV</h2>
-                                <div className="space-y-4">
-                                    <input type="text" placeholder="Mã LSX" value={importLsx} onChange={(e) => setImportLsx(e.target.value)} className="w-full border p-2 rounded" />
-                                    <input type="file" accept=".csv" onChange={(e) => setFile(e.target.files[0])} className="w-full border p-2 rounded" />
-                                    <div className="flex justify-end space-x-3 mt-6">
-                                        <button type="button" onClick={() => setIsImportModalOpen(false)} className="px-4 py-2 border rounded">Hủy</button>
-                                        <button type="button" onClick={handleImportBOM} className="px-4 py-2 bg-green-600 text-white rounded">Import</button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    )}
-                </div>
-            );
-        }
+      {isImportOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg w-full max-w-md shadow-2xl">
+            <h2 className="text-xl font-bold mb-4">Nhập BOM từ CSV</h2>
+            <div className="space-y-4">
+              <input type="text" placeholder="Mã LSX" value={importLsx} onChange={e => setImportLsx(e.target.value)} className="w-full border p-2 rounded" />
+              <input type="file" accept=".csv" onChange={e => setFile(e.target.files[0])} className="w-full border p-2 rounded" />
+              <div className="flex justify-end space-x-3 mt-6">
+                <button onClick={() => setIsImportOpen(false)} className="px-4 py-2 border rounded">Hủy</button>
+                <button onClick={handleImportBOM} className="px-4 py-2 bg-green-600 text-white rounded">Import</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
-        // ==========================================
-        // 6. QUÉT MÃ QR (CAMERA)
-        // ==========================================
-        function QRScanner({ type }) {
-            const [scannedData, setScannedData] = useState(null);
-            const [error, setError] = useState('');
-            const [quantity, setQuantity] = useState(1);
-            const scannerRef = useRef(null);
+// =====================================================================
+// 6. IN ĐƠN HÀNG — chọn LSX, xem bảng in, nút in
+// =====================================================================
+function InDonHang() {
+  const [lsxList, setLsxList] = useState([]);
+  const [selectedLsx, setSelectedLsx] = useState('');
+  const [rows, setRows] = useState([]);
 
-            useEffect(() => {
-                const html5QrCode = new Html5Qrcode("reader");
-                scannerRef.current = html5QrCode;
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from(TB_BOM).select('lsx');
+      setLsxList(Array.from(new Set((data || []).map(d => d.lsx))));
+    })();
+  }, []);
 
-                html5QrCode.start(
-                    { facingMode: "environment" },
-                    { fps: 10, qrbox: { width: 250, height: 250 } },
-                    (decodedText) => {
-                        html5QrCode.stop().then(() => { handleScanSuccess(decodedText); }).catch(err => console.error(err));
-                    },
-                    (errorMessage) => { /* Bỏ qua lỗi quét */ }
-                ).catch(err => setError("Không thể mở camera: " + err));
+  useEffect(() => {
+    if (!selectedLsx) { setRows([]); return; }
+    (async () => {
+      const { data } = await supabase.from(TB_BOM).select('*').eq('lsx', selectedLsx).order('stt_ct');
+      setRows(data || []);
+    })();
+  }, [selectedLsx]);
 
-                return () => {
-                    if (scannerRef.current) { scannerRef.current.stop().catch(e => console.log(e)); }
-                };
-            }, []);
+  return (
+    <div>
+      <div className="no-print flex items-center gap-4 mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">In đơn hàng</h1>
+        <select value={selectedLsx} onChange={e => setSelectedLsx(e.target.value)} className="border rounded px-3 py-2 text-sm">
+          <option value="">— Chọn LSX —</option>
+          {lsxList.map(lsx => <option key={lsx} value={lsx}>{lsx}</option>)}
+        </select>
+        {selectedLsx && <button onClick={() => window.print()} className="bg-primary text-white px-4 py-2 rounded shadow hover:bg-blue-700">In đơn hàng</button>}
+      </div>
 
-            const handleScanSuccess = async (text) => {
-                try {
-                    const parts = text.split('|');
-                    if (parts.length < 2) throw new Error("Mã QR không đúng định dạng (Cần có dấu |)");
-                    
-                    const lsx = parts[0].trim();
-                    const stt = parts[1].trim();
-                    const lsx_stt = `${lsx}-${stt}`;
+      {selectedLsx && (
+        <div className="print-area bg-white rounded-lg shadow p-6">
+          <div className="flex justify-between items-center mb-4 border-b pb-3">
+            <h2 className="text-xl font-bold">PHIẾU BOM — LSX {selectedLsx}</h2>
+            <span className="text-sm text-gray-500">Ngày in: {new Date().toLocaleDateString('vi-VN')}</span>
+          </div>
+          <table className="min-w-full text-sm border border-gray-300">
+            <thead className="bg-gray-100">
+              <tr>
+                <th className="border px-2 py-1">STT</th>
+                <th className="border px-2 py-1">MSCT</th>
+                <th className="border px-2 py-1">Tên chi tiết</th>
+                <th className="border px-2 py-1">Vật liệu</th>
+                <th className="border px-2 py-1">SL/ĐH</th>
+                <th className="border px-2 py-1">Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.id}>
+                  <td className="border px-2 py-1">{r.stt_ct}</td>
+                  <td className="border px-2 py-1">{r.msct}</td>
+                  <td className="border px-2 py-1">{r.ten_chi_tiet}</td>
+                  <td className="border px-2 py-1">{r.vat_lieu}</td>
+                  <td className="border px-2 py-1">{r.sl_dh}</td>
+                  <td className="border px-2 py-1">{r.ghi_chu}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
-                    const { data, error } = await supabase.from('order_details').select('*').eq('lsx_stt', lsx_stt).single();
-                    
-                    if (error || !data) throw new Error("Không tìm thấy dữ liệu cho mã: " + lsx_stt);
-                    
-                    setScannedData(data);
-                    setQuantity(data.quantity_required); // Mặc định lấy SL yêu cầu
-                } catch (err) {
-                    setError(err.message);
-                }
-            };
+// =====================================================================
+// 7. KANBAN — nhóm theo LSX, trạng thái suy ra từ nhan_vat_tu / giao_hang
+// =====================================================================
+function Kanban() {
+  const [cols, setCols] = useState({ choVT: [], daNhanVT: [], daGiao: [] });
+  const [loading, setLoading] = useState(true);
 
-            const handleSubmit = async () => {
-                alert(`Đã quét: ${scannedData.lsx_stt}. Số lượng: ${quantity}. (Chức năng lưu đang được hoàn thiện)`);
-                window.location.reload();
-            };
+  useEffect(() => { load(); }, []);
 
-            return (
-                <div className="max-w-2xl mx-auto">
-                    <h1 className="text-2xl font-bold mb-6 text-center">{type === 'receipt' ? 'NHẬN VẬT TƯ' : 'GIAO HÀNG'}</h1>
-                    
-                    {error && <div className="bg-red-100 text-red-700 p-4 rounded mb-4 text-center">{error} <button onClick={() => window.location.reload()} className="underline font-bold">Thử lại</button></div>}
+  const load = async () => {
+    setLoading(true);
+    const { data } = await supabase.from(TB_BOM).select('lsx, san_pham, nhan_vat_tu, giao_hang');
+    const byLsx = new Map();
+    (data || []).forEach(r => {
+      if (!byLsx.has(r.lsx)) byLsx.set(r.lsx, { lsx: r.lsx, san_pham: r.san_pham, total: 0, vt: 0, giao: 0 });
+      const o = byLsx.get(r.lsx);
+      o.total++; if (r.nhan_vat_tu) o.vt++; if (r.giao_hang) o.giao++;
+    });
+    const choVT = [], daNhanVT = [], daGiao = [];
+    for (const o of byLsx.values()) {
+      if (o.giao === o.total) daGiao.push(o);
+      else if (o.vt === o.total) daNhanVT.push(o);
+      else choVT.push(o);
+    }
+    setCols({ choVT, daNhanVT, daGiao });
+    setLoading(false);
+  };
 
-                    {!scannedData ? (
-                        <div className="bg-white p-4 rounded shadow">
-                            <div id="reader" className="w-full"></div>
-                            <p className="text-center text-gray-500 mt-4">Đưa mã QR vào khung hình để quét</p>
-                        </div>
-                    ) : (
-                        <div className="bg-white p-6 rounded shadow border-t-4 border-primary">
-                            <h2 className="text-xl font-bold text-green-600 mb-4 text-center">Quét Thành Công!</h2>
-                            <div className="space-y-2 mb-6">
-                                <p><strong>Mã LSX-STT:</strong> {scannedData.lsx_stt}</p>
-                                <p><strong>Tên chi tiết:</strong> {scannedData.part_name}</p>
-                                <p><strong>Mã chi tiết:</strong> {scannedData.msct}</p>
-                                <p><strong>Số lượng yêu cầu:</strong> {scannedData.quantity_required}</p>
-                            </div>
-                            
-                            <div className="mb-6">
-                                <label className="block text-sm font-medium mb-2">Số lượng {type === 'receipt' ? 'nhận' : 'giao'} thực tế:</label>
-                                <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="w-full text-2xl p-3 border-2 border-primary rounded text-center font-bold" />
-                            </div>
+  const Column = ({ title, items, color }) => (
+    <div className="bg-gray-50 rounded-lg p-4 flex-1 min-w-[280px]">
+      <h3 className={`font-semibold mb-3 ${color}`}>{title} <span className="text-gray-400 font-normal">({items.length})</span></h3>
+      <div className="space-y-3">
+        {items.map(o => (
+          <div key={o.lsx} className="bg-white rounded-md shadow-sm p-3 border border-gray-100">
+            <p className="font-medium text-sm text-navy">{o.lsx}</p>
+            <p className="text-xs text-gray-500">{o.san_pham}</p>
+            <p className="text-xs text-gray-400 mt-1">VT {o.vt}/{o.total} · Giao {o.giao}/{o.total}</p>
+          </div>
+        ))}
+        {items.length === 0 && <p className="text-xs text-gray-400">Không có LSX nào.</p>}
+      </div>
+    </div>
+  );
 
-                            <button onClick={handleSubmit} className="w-full bg-primary text-white text-lg py-3 rounded shadow hover:bg-blue-700">
-                                XÁC NHẬN {type === 'receipt' ? 'NHẬN' : 'GIAO'}
-                            </button>
-                        </div>
-                    )}
-                </div>
-            );
-        }
+  return (
+    <div>
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">Kanban Đơn Hàng</h1>
+      {loading ? <p className="text-gray-400">Đang tải…</p> : (
+        <div className="flex gap-4 overflow-x-auto">
+          <Column title="Chờ nhận vật tư" items={cols.choVT} color="text-orange-500" />
+          <Column title="Đã nhận VT — chờ giao" items={cols.daNhanVT} color="text-blue-600" />
+          <Column title="Đã giao hàng" items={cols.daGiao} color="text-green-600" />
+        </div>
+      )}
+    </div>
+  );
+}
 
+// =====================================================================
+// 8. PHÂN QUYỀN — danh sách người dùng/vai trò thủ công (bảng "NguoiDung")
+//    Không còn gắn với tài khoản đăng nhập Supabase Auth (đã bỏ đăng nhập).
+// =====================================================================
+function PhanQuyen() {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newName, setNewName] = useState('');
+  const roles = ['admin', 'qltx', 'user', 'viewer'];
 
-        // ==========================================
-        // 7. LAYOUT & ĐIỀU HƯỚNG
-        // ==========================================
-        function DesktopLayout({ children, currentPage, setCurrentPage }) {
-            const { profile, signOut } = useAuth();
-            const menuItems = [
-                { id: 'dashboard', name: 'Dashboard' },
-                { id: 'orders', name: 'Quản lý đơn hàng' },
-                { id: 'receipt', name: 'Nhận vật tư QR' },
-                { id: 'delivery', name: 'Giao hàng QR' },
-            ];
+  useEffect(() => { load(); }, []);
 
-            return (
-                <div className="flex h-screen overflow-hidden">
-                    <aside className="w-64 bg-navy text-white flex flex-col">
-                        <div className="h-16 flex items-center justify-center border-b border-gray-700">
-                            <h2 className="text-xl font-bold tracking-wider">PRODUCTION</h2>
-                        </div>
-                        <nav className="flex-1 overflow-y-auto py-4">
-                            {menuItems.map((item) => (
-                                <div key={item.id} onClick={() => setCurrentPage(item.id)}
-                                     className={`flex items-center px-6 py-3 cursor-pointer transition ${currentPage === item.id ? 'bg-primary border-r-4 border-accent' : 'hover:bg-gray-800'}`}>
-                                    <span className="text-sm font-medium">{item.name}</span>
-                                </div>
-                            ))}
-                        </nav>
-                    </aside>
+  const load = async () => {
+    setLoading(true);
+    const { data, error } = await supabase.from('NguoiDung').select('*').order('created_at');
+    if (!error) setUsers(data || []);
+    setLoading(false);
+  };
 
-                    <div className="flex-1 flex flex-col overflow-hidden">
-                        <header className="h-16 bg-white shadow-sm flex items-center justify-between px-6">
-                            <div className="text-lg font-semibold text-gray-700">Hệ thống Quản lý Sản xuất</div>
-                            <div className="flex items-center space-x-4">
-                                <span className="text-sm text-gray-600">Xin chào, <strong>{profile?.full_name || 'User'}</strong></span>
-                                <button onClick={signOut} className="text-red-500 hover:text-red-700 text-sm font-medium">Đăng xuất</button>
-                            </div>
-                        </header>
-                        <main className="flex-1 overflow-y-auto p-6">{children}</main>
-                    </div>
-                </div>
-            );
-        }
+  const updateRole = async (id, role) => {
+    setUsers(prev => prev.map(u => u.id === id ? { ...u, role } : u));
+    const { error } = await supabase.from('NguoiDung').update({ role }).eq('id', id);
+    if (error) alert('Lỗi cập nhật quyền: ' + error.message);
+  };
 
-        function MainApp() {
-            const { session, loading } = useAuth();
-            const [currentPage, setCurrentPage] = useState('dashboard');
+  const addUser = async () => {
+    if (!newName.trim()) return;
+    const { error } = await supabase.from('NguoiDung').insert([{ full_name: newName.trim(), role: 'user' }]);
+    if (error) alert('Lỗi thêm người dùng: ' + error.message);
+    else { setNewName(''); load(); }
+  };
 
-            if (loading) return <div className="h-screen flex items-center justify-center text-xl">Đang tải...</div>;
-            if (!session) return <Login />;
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Phân quyền người dùng</h1>
+        <div className="flex gap-2">
+          <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="Tên người dùng mới…" className="border rounded px-3 py-2 text-sm" />
+          <button onClick={addUser} className="bg-primary text-white px-4 py-2 rounded text-sm hover:bg-blue-700">+ Thêm</button>
+        </div>
+      </div>
+      <div className="bg-white rounded-lg shadow overflow-hidden">
+        <table className="min-w-full text-sm">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">Họ tên</th>
+              <th className="px-6 py-3 text-left font-medium text-gray-500">Vai trò</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {loading ? <tr><td colSpan="2" className="text-center py-4">Đang tải…</td></tr> :
+              users.length === 0 ? <tr><td colSpan="2" className="text-center py-4 text-gray-400">Chưa có người dùng nào.</td></tr> :
+              users.map(u => (
+                <tr key={u.id}>
+                  <td className="px-6 py-4">{u.full_name || '—'}</td>
+                  <td className="px-6 py-4">
+                    <select value={u.role || 'user'} onChange={e => updateRole(u.id, e.target.value)} className="border rounded px-2 py-1 text-sm">
+                      {roles.map(r => <option key={r} value={r}>{r}</option>)}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
 
-            return (
-                <DesktopLayout currentPage={currentPage} setCurrentPage={setCurrentPage}>
-                    {currentPage === 'dashboard' && <Dashboard />}
-                    {currentPage === 'orders' && <Orders />}
-                    {currentPage === 'receipt' && <QRScanner type="receipt" />}
-                    {currentPage === 'delivery' && <QRScanner type="delivery" />}
-                </DesktopLayout>
-            );
-        }
+// =====================================================================
+// 9. SIDEBAR (trắng, chữ xanh dương) + LAYOUT
+// =====================================================================
+function Sidebar({ currentPage, setCurrentPage }) {
+  const menuItems = [
+    { id: 'dashboard', name: 'Dashboard' },
+    { id: 'tracuu', name: 'Tra cứu' },
+    { id: 'bom', name: 'BOM' },
+    { id: 'indonhang', name: 'In đơn hàng' },
+    { id: 'kanban', name: 'Kanban' },
+    { id: 'phanquyen', name: 'Phân quyền' },
+  ];
+  return (
+    <aside className="w-64 bg-white border-r border-gray-200 flex flex-col">
+      <div className="h-16 flex items-center justify-center border-b border-gray-100">
+        <h2 className="text-lg font-bold text-primary tracking-wide">PRODUCTION CONTROL</h2>
+      </div>
+      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+        {menuItems.map(item => (
+          <div key={item.id} onClick={() => setCurrentPage(item.id)}
+               className={`flex items-center px-4 py-2.5 rounded-lg cursor-pointer transition text-sm font-medium
+                 ${currentPage === item.id ? 'bg-blue-50 text-primary' : 'text-gray-500 hover:bg-gray-50 hover:text-primary'}`}>
+            {item.name}
+          </div>
+        ))}
+      </nav>
+      <div className="border-t border-gray-100 p-4">
+        <p className="text-xs text-gray-400">Xưởng GCCK-CX · THACO INDUSTRIES</p>
+      </div>
+    </aside>
+  );
+}
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<AuthProvider><MainApp /></AuthProvider>);
-    </script>
+function MainApp() {
+  const [currentPage, setCurrentPage] = useState('dashboard');
+
+  return (
+    <div className="flex h-screen overflow-hidden">
+      <div className="no-print h-full"><Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} /></div>
+      <main className="flex-1 overflow-y-auto p-6">
+        {currentPage === 'dashboard' && <Dashboard />}
+        {currentPage === 'tracuu' && <TraCuu />}
+        {currentPage === 'bom' && <Bom />}
+        {currentPage === 'indonhang' && <InDonHang />}
+        {currentPage === 'kanban' && <Kanban />}
+        {currentPage === 'phanquyen' && <PhanQuyen />}
+      </main>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById('root'));
+root.render(<MainApp />);
+</script>
 </body>
 </html>
