@@ -13,6 +13,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.24.7/babel.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
   tailwind.config = {
@@ -179,7 +180,7 @@ async function fetchAll(makeQuery) {
   return all;
 }
 
-function useLsxList() {
+function useLsxList(refreshKey) {
   const [list, setList] = useState([]);
   useEffect(() => {
     (async () => {
@@ -188,7 +189,7 @@ function useLsxList() {
         setList(Array.from(new Set(data.map(d => d.col_a).filter(Boolean))));
       } catch (e) { console.error(e); }
     })();
-  }, []);
+  }, [refreshKey]);
   return list;
 }
 
@@ -716,8 +717,99 @@ function TemKanban({ r }) {
   );
 }
 
+// ---- Nhập file Excel/CSV (sheet "BOM TỔNG VÀO") -> Supabase bảng Bomkanban, ghi từng lô 500 dòng ----
+function ImportKanbanModal({ onClose, onDone }) {
+  const [file, setFile] = useState(null);
+  const [firstRow, setFirstRow] = useState(7);
+  const [busy, setBusy] = useState(false);
+  const [pct, setPct] = useState(0);
+  const [msg, setMsg] = useState('');
+  const [err, setErr] = useState('');
+  const NCOL = 157, CHUNK = 500;           // 157 = cột FA
+  const tick = () => new Promise(r => setTimeout(r, 30));
+  const norm = (r) => { const o = new Array(NCOL); for (let i = 0; i < NCOL; i++) o[i] = r[i] == null ? '' : String(r[i]); return o; };
+
+  const run = async () => {
+    if (!file) return alert('Hãy chọn file Excel (.xlsx) hoặc CSV trước.');
+    if (!confirm('Thao tác này sẽ XOÁ toàn bộ dữ liệu Bomkanban hiện có và thay bằng dữ liệu trong file. Tiếp tục?')) return;
+    setBusy(true); setErr(''); setPct(0);
+    try {
+      setMsg('Đang đọc file…'); await tick();
+      const buf = await file.arrayBuffer();
+      let wb, name;
+      if (/\.csv$/i.test(file.name)) {
+        wb = XLSX.read(new TextDecoder('utf-8').decode(buf), { type: 'string', raw: true, dense: true });
+        name = wb.SheetNames[0];
+      } else {
+        const names = XLSX.read(buf, { type: 'array', bookSheets: true }).SheetNames;
+        name = names.includes('BOM TỔNG VÀO') ? 'BOM TỔNG VÀO' : names[0];
+        setMsg(`Đang phân tích sheet "${name}" (file lớn có thể mất 1–2 phút, đừng đóng trang)…`); await tick();
+        wb = XLSX.read(buf, { type: 'array', dense: true, sheets: name, cellFormula: false, cellHTML: false, cellStyles: false });
+      }
+      const ws = wb.Sheets[name];
+      if (!ws) throw new Error('Không đọc được sheet ' + name);
+      const all = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '', blankrows: true, range: Number(firstRow) - 1 });
+
+      // bỏ các dòng trống ở cuối (cột A hoặc Q phải có dữ liệu)
+      let last = all.length;
+      while (last > 0 && !(String(all[last - 1][0] || '').trim() || String(all[last - 1][16] || '').trim())) last--;
+      if (!last) throw new Error('Không thấy dữ liệu từ hàng ' + firstRow + ' trở đi.');
+
+      setMsg('Đang xoá dữ liệu cũ…'); await tick();
+      const c = await supabase.rpc('clear_bomkanban');
+      if (c.error) throw new Error('Không xoá được dữ liệu cũ: ' + c.error.message);
+
+      for (let s = 0; s < last; s += CHUNK) {
+        const end = Math.min(s + CHUNK, last);
+        const part = all.slice(s, end).map(norm);
+        let ok = false, lastErr = '';
+        for (let k = 0; k < 3 && !ok; k++) {           // thử lại tối đa 3 lần nếu rớt mạng
+          const { error } = await supabase.rpc('import_bomkanban_chunk', { p_start: Number(firstRow) + s, p_rows: part });
+          if (error) { lastErr = error.message; await new Promise(r => setTimeout(r, 800)); } else ok = true;
+        }
+        if (!ok) throw new Error(`Lỗi khi ghi dòng ${Number(firstRow) + s}: ${lastErr}`);
+        setPct(Math.round(end / last * 100));
+        setMsg(`Đã ghi ${end.toLocaleString('vi-VN')} / ${last.toLocaleString('vi-VN')} dòng`);
+        await tick();
+      }
+      setMsg(`✔ Hoàn tất: đã nhập ${last.toLocaleString('vi-VN')} dòng.`);
+      onDone();
+    } catch (e) { setErr(e.message || String(e)); }
+    setBusy(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print">
+      <div className="bg-white p-6 rounded-2xl w-full max-w-lg shadow-2xl">
+        <h2 className="text-lg font-bold mb-1">Nhập dữ liệu BOM TỔNG VÀO</h2>
+        <p className="text-xs text-gray-500 mb-4">Chọn file .xlsx tải từ Google Sheet (hoặc CSV của sheet BOM TỔNG VÀO). Cột A→FA, dữ liệu từ hàng bắt đầu bên dưới.</p>
+        <div className="space-y-3">
+          <input type="file" accept=".xlsx,.xls,.csv" disabled={busy} onChange={e => setFile(e.target.files[0])} className="inp w-full" />
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-slate-600">Dữ liệu bắt đầu từ hàng</span>
+            <input type="number" min="1" value={firstRow} disabled={busy} onChange={e => setFirstRow(e.target.value)} className="inp" style={{ width: 80 }} />
+          </div>
+          {(busy || msg) && (
+            <div>
+              <div className="h-2 bg-gray-200 rounded-full overflow-hidden"><div className="h-2 bg-primary transition-all" style={{ width: pct + '%' }}></div></div>
+              <p className="text-xs text-slate-600 mt-1">{msg}</p>
+            </div>
+          )}
+          {err && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{err}</p>}
+        </div>
+        <div className="flex justify-end gap-3 mt-5">
+          <button onClick={onClose} disabled={busy} className="btn">{busy ? 'Đang chạy…' : 'Đóng'}</button>
+          <button onClick={run} disabled={busy || !file} className="btn btn-green" style={{ opacity: busy || !file ? .5 : 1 }}><i className="fa-solid fa-cloud-arrow-up"></i> Bắt đầu nhập</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Kanban() {
-  const lsxList = useLsxList();
+  const [ver, setVer] = useState(0);
+  const [importOpen, setImportOpen] = useState(false);
+  const lsxList = useLsxList(ver);
   const [lsx, setLsx] = useState('');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -766,7 +858,8 @@ function Kanban() {
         </select>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm mã / tên chi tiết…" className="inp" style={{ width: 240 }} />
         <button className="btn" onClick={() => load(lsx)}><i className="fa-solid fa-rotate"></i> Làm mới</button>
-        <button className="btn btn-green ml-auto" onClick={doPrint} disabled={!filtered.length} style={{ opacity: filtered.length ? 1 : .5 }}>
+        <button className="btn ml-auto" onClick={() => setImportOpen(true)}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>
+        <button className="btn btn-green" onClick={doPrint} disabled={!filtered.length} style={{ opacity: filtered.length ? 1 : .5 }}>
           <i className="fa-solid fa-print"></i> In tem ({filtered.length})
         </button>
       </div>
@@ -778,6 +871,8 @@ function Kanban() {
       <div className="tem-wrap grid gap-5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(560px, 1fr))' }}>
         {shown.map(r => <TemKanban key={r.id} r={r} />)}
       </div>
+
+      {importOpen && <ImportKanbanModal onClose={() => setImportOpen(false)} onDone={() => { setVer(v => v + 1); load(lsx); }} />}
 
       {!showAll && shown.length < filtered.length && (
         <div className="no-print text-center">
