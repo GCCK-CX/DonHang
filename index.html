@@ -54,7 +54,7 @@ button, input, select, textarea { font-family: inherit; }
 
   /* ---------- Sidebar ---------- */
   .sb { width:256px; transition:width .2s ease; }
-  .sb.collapsed { width:74px; }
+  .sb.collapsed { width:84px; }
   .sb-group { display:flex; align-items:center; gap:10px; padding:10px 18px; margin:10px 10px 2px; border-radius:8px;
               color:#1d6fb8; font-weight:700; font-size:13px; background:var(--blue-soft); }
   .sb.collapsed .sb-group { justify-content:center; padding:10px 0; }
@@ -95,17 +95,26 @@ button, input, select, textarea { font-family: inherit; }
   .tem-page { position:relative; flex:0 0 auto; background:#fff; box-shadow:0 1px 4px rgba(15,23,42,.28);
               width:calc(600px * var(--ss,1)); height:calc(400px * var(--ss,1)); }
   .tem-page .tem { transform:scale(var(--ss,1)); transform-origin:0 0; }
+  .tem-page { cursor:pointer; user-select:none; -webkit-user-select:none; transition:box-shadow .12s; }
+  .tem-page:hover { box-shadow:0 0 0 3px #93c5fd, 0 1px 4px rgba(15,23,42,.28); }
+  .tem-page.picked { box-shadow:0 0 0 4px #2563eb, 0 4px 14px rgba(37,99,235,.35); }
+  .tem-pick { position:absolute; top:6px; left:6px; z-index:20; width:24px; height:24px; border-radius:50%; background:#2563eb; color:#fff;
+              font-size:12px; display:flex; align-items:center; justify-content:center; box-shadow:0 1px 3px rgba(0,0,0,.4); pointer-events:none; }
   /* Số tờ in: nhãn đỏ chữ trắng, nhỏ, nhô ở góc trên phải (giống số mũ) — không in ra giấy */
   .tem-no { position:absolute; top:-8px; right:-6px; z-index:20; min-width:20px; height:18px; padding:0 6px;
             border-radius:9px; background:#dc2626; color:#fff; font-size:11px; font-weight:800; line-height:18px;
             text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.4); pointer-events:none; }
 
   /* ---------- IN ĐƠN HÀNG: cỡ chữ bảng Định mức (giữ nguyên) + font Cambria + zoom vừa khung ---------- */
-  table.erp.dm td { font-size:32px; line-height:1.2; padding:8px 10px; }
+  table.erp.dm { border-collapse:collapse; }   /* gộp viền: hết nét kẻ đôi, mảnh đi 1/2 */
+  table.erp.dm td { font-size:32px; line-height:1.2; padding:8px 10px;
+                    white-space:normal; overflow:hidden; overflow-wrap:anywhere; word-break:break-word; }  /* chữ dài tự xuống dòng, không đè ô bên cạnh */
   table.erp.dm td.sl   { font-size:46px; font-weight:800; }
   table.erp.dm td.bold { font-weight:800; }
   table.erp.dm td.note { font-size:22px; font-weight:400; }
-  table.erp.dm thead th { position:static; font-size:22px; }   /* tiêu đề cột: sau khi thu nhỏ vẫn đọc được */
+  table.erp.dm thead th { position:static; font-size:32px; line-height:1.15; white-space:normal; }   /* tên cột size 32 */
+  .col-rs { position:absolute; top:-100px; bottom:0; right:-12px; width:24px; cursor:col-resize; z-index:30; }
+  .col-rs:hover, .col-rs:active { background:rgba(37,99,235,.45); }
   table.erp.dm tr { break-inside:avoid; page-break-inside:avoid; }
   .print-sheet, .print-sheet th, .print-sheet td { font-family: Cambria, 'Cambria Math', Georgia, 'Times New Roman', serif !important; }
   .dm-zoom { zoom: var(--zs, .4); }   /* --zs do JS tính theo bề rộng khung xem */
@@ -130,6 +139,21 @@ button, input, select, textarea { font-family: inherit; }
   table.xg td.act { outline:2px solid #2563eb; outline-offset:-2px; }
   table.xg td.ed { padding:0; }
   .xg-in { width:100%; height:100%; border:0; outline:none; background:#fff; font:inherit; padding:0 6px; box-sizing:border-box; }
+
+    /* ---------- Hộp thoại xác nhận ---------- */
+  .dlg { width:min(440px,92vw); background:#fff; border-radius:18px; padding:28px 28px 22px; text-align:center;
+         box-shadow:0 25px 60px rgba(15,23,42,.35); animation:dlgPop .18s ease-out; }
+  @keyframes dlgPop { from { opacity:0; transform:translateY(10px) scale(.96); } to { opacity:1; transform:none; } }
+  .dlg-ico { width:64px; height:64px; border-radius:50%; margin:0 auto 14px; display:flex; align-items:center; justify-content:center; font-size:26px; }
+  .dlg-ico.red  { background:#fee2e2; color:#dc2626; box-shadow:0 0 0 8px #fef2f2; }
+  .dlg-ico.blue { background:#dbeafe; color:#2563eb; box-shadow:0 0 0 8px #eff6ff; }
+  .dlg-title { font-size:18px; font-weight:800; color:#0f172a; margin-bottom:6px; }
+  .dlg-msg { font-size:13.5px; color:#475569; line-height:1.5; }
+  .dlg-chips { display:flex; justify-content:center; flex-wrap:wrap; gap:8px; margin-top:14px; }
+  .dlg-chip { background:#f1f5f9; border:1px solid #e2e8f0; border-radius:999px; padding:4px 12px; font-size:12px; font-weight:700; color:#334155; }
+  .dlg-warn { margin-top:14px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; border-radius:10px; padding:8px 12px; font-size:12px; font-weight:600; }
+  .dlg-act { display:flex; gap:10px; justify-content:center; margin-top:22px; }
+  .dlg-act .btn { min-width:120px; justify-content:center; padding:10px 16px; font-size:13px; }
 
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
@@ -175,7 +199,7 @@ const TB_KANBAN = "Bomkanban";   // MỚI: dữ liệu sheet "BOM TỔNG VÀO" (
 const TB_PKH = "LSX_PKH";        // Số đơn hàng / Khách hàng / Ngày hoàn thành theo LSX
 
 // Logo THACO: để trống = dùng logo chữ vẽ sẵn. Có file logo thật thì điền đường dẫn, ví dụ "logo-thaco.png"
-const LOGO_URL = "";
+const LOGO_URL = "https://raw.githubusercontent.com/GCCK-CX/DonHang/main/LOGO_THACO.png";
 
 // Định nghĩa cột hiển thị cho Tra cứu / BOM (khớp đúng thứ tự người dùng yêu cầu)
 const BOM_COLUMNS = [
@@ -273,14 +297,13 @@ function useLsxList(refreshKey) {
 }
 
 function Logo({ collapsed }) {
-  if (LOGO_URL) return <img src={LOGO_URL} alt="THACO" style={{ height: collapsed ? 26 : 34 }} />;
-  return (
-    <svg viewBox="0 0 160 40" style={{ height: collapsed ? 22 : 32 }}>
-      <text x="0" y="32" fontFamily="Arial Black, Arial, sans-serif" fontWeight="900" fontSize="38" letterSpacing="1" fill="#1b4f9c">
-        {collapsed ? 'T' : 'THACO'}
-      </text>
-    </svg>
-  );
+  const [err, setErr] = useState(false);
+  if (LOGO_URL && !err) {
+    return <img src={LOGO_URL} alt="THACO" draggable={false} onError={() => setErr(true)}
+      style={{ width: collapsed ? 62 : 150, height: 'auto', display: 'block', transition: 'width .2s' }} />;
+  }
+  // dự phòng khi chưa có / lỗi link logo
+  return <span style={{ fontFamily: 'Arial Black, Arial, sans-serif', fontWeight: 900, color: '#1b4f9c', letterSpacing: 1, fontSize: collapsed ? 13 : 24 }}>THACO</span>;
 }
 
 function QR({ text, size = 130 }) {
@@ -611,7 +634,7 @@ function Bom() {
 //    Dữ liệu lấy từ bảng Bomkanban (sheet BOM TỔNG VÀO). NC1..NC10 = 10 công đoạn đầu theo thứ tự gia công.
 // =====================================================================
 // Bề rộng cố định từng cột bảng Định mức (px, ở cỡ chữ gốc). Muốn cột nào rộng/hẹp hơn thì sửa số ở đây.
-const DM_W = [70, 200, 340, 170, 130, 130, 120, 130, 100, 100, 110, 140,        // TT … SL/ĐH
+const DM_W = [110, 260, 340, 170, 130, 130, 120, 130, 100, 100, 110, 140,        // TT … SL/ĐH
               170, 170, 170, 170, 170, 170, 170, 170, 170, 170,                   // NC1 … NC10
               130, 130, 220];                                                     // Bên giao, Bên nhận, Ghi chú
 const DM_TOTAL = DM_W.reduce((a, b) => a + b, 0);
@@ -635,8 +658,33 @@ function InDonHang() {
     const ro = new ResizeObserver(m); ro.observe(el);
     return () => ro.disconnect();
   }, [rows.length, loading]);
-  const zs = boxW ? Math.floor(Math.min(1, (boxW - 24) / DM_TOTAL) * 1000) / 1000 : 0.4;
-  const zp = Math.floor(DM_PRINT_W / DM_TOTAL * 1000) / 1000;
+  // ---- Độ rộng cột kéo dãn tự do (nhớ lại trong trình duyệt) ----
+  const [colW, setColW] = useState(() => {
+    try { const a = JSON.parse(localStorage.getItem('dm_colw_v1')); if (Array.isArray(a) && a.length === DM_W.length) return a; } catch (e) {}
+    return DM_W;
+  });
+  useEffect(() => { try { localStorage.setItem('dm_colw_v1', JSON.stringify(colW)); } catch (e) {} }, [colW]);
+  const dmTotal = colW.reduce((a, b) => a + b, 0);
+  const [frozen, setFrozen] = useState(null);          // đang kéo cột thì giữ nguyên tỉ lệ zoom cho khỏi "trượt"
+  const zs0 = boxW ? Math.floor(Math.min(1, (boxW - 24) / dmTotal) * 1000) / 1000 : 0.4;
+  const zs = frozen || zs0;
+  const zp = Math.floor(DM_PRINT_W / dmTotal * 1000) / 1000;
+
+  const startResize = (e, i) => {
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, w0 = colW[i], z = zs0 || 1;
+    setFrozen(zs0);
+    document.body.style.cursor = 'col-resize';
+    const mv = (ev) => {
+      const w = Math.max(40, Math.round(w0 + (ev.clientX - x0) / z));   // chia cho zoom vì bảng đang thu nhỏ
+      setColW(p => { const a = p.slice(); a[i] = w; return a; });
+    };
+    const up = () => {
+      window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up);
+      document.body.style.cursor = ''; setFrozen(null);
+    };
+    window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+  };
 
   const search = async (value) => {
     const v = (value ?? input).trim();
@@ -665,7 +713,8 @@ function InDonHang() {
         <button onClick={() => search()} className="btn btn-primary"><i className="fa-solid fa-magnifying-glass"></i> Tìm kiếm</button>
         <span className="text-xs font-bold text-slate-500 ml-3">KH GH</span>
         <input value={khgh} onChange={e => setKhgh(e.target.value)} placeholder="Ngày/kế hoạch giao hàng" className="inp" style={{ width: 200 }} />
-        <button onClick={() => window.print()} disabled={!rows.length} className="btn btn-green ml-auto" style={{ opacity: rows.length ? 1 : .5 }}>
+        <button onClick={() => setColW(DM_W)} className="btn ml-auto" title="Trả độ rộng các cột về mặc định"><i className="fa-solid fa-arrows-left-right"></i> Đặt lại cột</button>
+        <button onClick={() => window.print()} disabled={!rows.length} className="btn btn-green" style={{ opacity: rows.length ? 1 : .5 }}>
           <i className="fa-solid fa-print"></i> In đơn hàng
         </button>
       </div>
@@ -675,10 +724,10 @@ function InDonHang() {
       {!loading && !searched && <div className="no-print card p-6 text-center text-gray-400">Nhập mã lệnh sản xuất rồi bấm Tìm kiếm (hoặc nhấn Enter).</div>}
 
       {rows.length > 0 && !loading && (
-        <div className="print-sheet card p-2" ref={boxRef} style={{ overflowX: 'hidden' }}>
+        <div className="print-sheet card p-2" ref={boxRef} style={{ overflowX: frozen ? 'auto' : 'hidden' }}>
           <div className="dm-zoom" style={{ '--zs': zs, '--zp': zp }}>
-          <table className="erp dm" style={{ width: DM_TOTAL, tableLayout: 'fixed' }}>
-            <colgroup>{DM_W.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+          <table className="erp dm" style={{ width: dmTotal, tableLayout: 'fixed' }}>
+            <colgroup>{colW.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <thead>
               <tr>
                 <th colSpan={TOTAL_COLS} style={{ background: '#fff', color: '#000', fontSize: 46, lineHeight: 1.25, borderBottom: '1px solid #000' }}>
@@ -692,7 +741,7 @@ function InDonHang() {
                   </th>
                 ))}
                 <th colSpan={NC} style={{ background: '#ffff00', color: '#000', border: '1px solid #000' }}>KH GH {khgh && `: ${khgh}`}</th>
-                <th colSpan={3} rowSpan={2} style={{ background: '#fff', color: '#000', border: '1px solid #000', fontSize: 20 }}>{lsxShown}</th>
+                <th colSpan={3} rowSpan={2} style={{ background: '#fff', color: '#000', border: '1px solid #000', fontSize: 46, fontWeight: 800 }}>{lsxShown}</th>
               </tr>
               <tr>
                 <th colSpan={NC} style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000' }}>Công đoạn gia công</th>
@@ -701,13 +750,18 @@ function InDonHang() {
                 {Array.from({ length: NC }, (_, i) => (
                   <th key={i} style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 150 }}>NC{i + 1}</th>
                 ))}
-                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên giao<br /><span style={{ fontSize: 9 }}>(Ký và ghi rõ họ tên)</span></th>
-                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên nhận<br /><span style={{ fontSize: 9 }}>(Ký và ghi rõ họ tên)</span></th>
+                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên giao<br /><span style={{ fontSize: 16, fontWeight: 400 }}>(Ký và ghi rõ họ tên)</span></th>
+                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên nhận<br /><span style={{ fontSize: 16, fontWeight: 400 }}>(Ký và ghi rõ họ tên)</span></th>
                 <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 120 }}>Ghi chú</th>
               </tr>
               <tr>
                 {Array.from({ length: TOTAL_COLS }, (_, i) => (
-                  <th key={i} style={{ background: '#cdf5fb', color: '#000', border: '1px solid #000', padding: '3px 4px' }}>{no()}</th>
+                  <th key={i} style={{ background: '#cdf5fb', color: '#000', border: '1px solid #000', padding: '3px 4px', position: 'relative' }}>
+                    {no()}
+                    <span className="col-rs no-print" title="Kéo để chỉnh độ rộng · nhấp đúp để đặt lại cột này"
+                      onMouseDown={e => startResize(e, i)}
+                      onDoubleClick={() => setColW(p => { const a = p.slice(); a[i] = DM_W[i]; return a; })} />
+                  </th>
                 ))}
               </tr>
             </thead>
@@ -1001,7 +1055,7 @@ function Kanban({ active }) {
   const load = async (value) => {
     const v = (value || '').trim();
     if (!v) { setRows([]); return; }
-    setLoading(true); setPage(1); setStage('');
+    setLoading(true); setPage(1); setStage(''); setSelIds(new Set());
     try {
       let data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', v).order('sheet_row'));
       if (!data.length) data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').ilike('col_a', `%${v}%`).order('sheet_row'));
@@ -1046,7 +1100,41 @@ function Kanban({ active }) {
     return stage ? rows.filter(r => firstOf(r).some(s => s.L === stage)) : rows;
   }, [rows, stage, sttList]);
 
-  const shown = showAll ? filtered : filtered.slice(0, page * PAGE);
+  // ---- Chọn tem để in: bấm / kéo ----
+  const [selIds, setSelIds] = useState(() => new Set());
+  const selDrag = useRef(null);
+  const printList = useMemo(() => selIds.size ? filtered.filter(r => selIds.has(String(r.id))) : filtered, [filtered, selIds]);
+  const rank = useMemo(() => { const m = new Map(); printList.forEach((r, i) => m.set(String(r.id), i + 1)); return m; }, [printList]);
+  const shown = showAll ? printList : filtered.slice(0, page * PAGE);
+
+  const applySel = (id, mode) => setSelIds(prev => {
+    if ((mode === 'add') === prev.has(id)) return prev;
+    const n = new Set(prev); if (mode === 'add') n.add(id); else n.delete(id); return n;
+  });
+  const selectAll = () => setSelIds(new Set(filtered.map(r => String(r.id))));
+  const temDown = (e, id) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    const mode = selIds.has(id) ? 'remove' : 'add';
+    applySel(id, mode);
+    selDrag.current = { mode, x: e.clientX, y: e.clientY, last: id };
+    const mv = (ev) => { if (selDrag.current) { selDrag.current.x = ev.clientX; selDrag.current.y = ev.clientY; } };
+    const tick = () => {
+      const d = selDrag.current; if (!d) return;
+      const box = scrollRef.current.getBoundingClientRect();
+      if (d.y > box.bottom - 30) scrollRef.current.scrollTop += 25;       // kéo sát mép thì tự cuộn
+      else if (d.y < box.top + 30) scrollRef.current.scrollTop -= 25;
+      const t = document.elementFromPoint(d.x, d.y);
+      const el = t && t.closest ? t.closest('[data-tem]') : null;
+      if (el && el.dataset.tem !== d.last) { d.last = el.dataset.tem; applySel(d.last, d.mode); }
+    };
+    const timer = setInterval(tick, 40);
+    const up = () => {
+      clearInterval(timer); selDrag.current = null;
+      window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up);
+    };
+    window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+  };
 
   // Cuộn gần cuối khung thì tự tải thêm tem
   const onScroll = (e) => {
@@ -1091,8 +1179,12 @@ function Kanban({ active }) {
 
           <button className="btn ml-auto" onClick={() => setCfgOpen(true)}><i className="fa-solid fa-sliders"></i> Cấu hình</button>
           <button className="btn" onClick={() => setImportOpen(true)}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>
-          <button className="btn btn-green" onClick={doPrint} disabled={!filtered.length} style={{ opacity: filtered.length ? 1 : .5 }}>
-            <i className="fa-solid fa-print"></i> In tem ({filtered.length})
+          <button className="btn" onClick={selectAll} disabled={!filtered.length}><i className="fa-solid fa-square-check"></i> Chọn tất cả</button>
+          <button className="btn" onClick={() => setSelIds(new Set())} disabled={!selIds.size} style={{ opacity: selIds.size ? 1 : .5 }}>
+            <i className="fa-solid fa-xmark"></i> Bỏ chọn ({selIds.size})
+          </button>
+          <button className="btn btn-green" onClick={doPrint} disabled={!printList.length} style={{ opacity: printList.length ? 1 : .5 }}>
+            <i className="fa-solid fa-print"></i> In tem {selIds.size ? 'đã chọn' : 'tất cả'} ({printList.length})
           </button>
         </div>
 
@@ -1116,12 +1208,16 @@ function Kanban({ active }) {
         {!loading && lsx && filtered.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không có tem nào.</div>}
 
         <div className="tem-wrap" style={{ ...printVars, '--ss': scale, '--gap': GAP + 'px' }}>
-          {shown.map((r, i) => (
-            <div className="tem-page" key={r.id}>
-              <span className="tem-no no-print" title="Số tờ in">{i + 1}</span>
-              <TemKanban r={r} pkh={pkh[normKey(cell(r, 'A'))]} />
-            </div>
-          ))}
+          {shown.map((r) => {
+            const id = String(r.id), on = selIds.has(id), no = rank.get(id);
+            return (
+              <div className={'tem-page' + (on ? ' picked' : '')} key={r.id} data-tem={id} onMouseDown={e => temDown(e, id)}>
+                {on && <span className="tem-pick no-print"><i className="fa-solid fa-check"></i></span>}
+                {no && <span className="tem-no no-print" title="Số tờ in">{no}</span>}
+                <TemKanban r={r} pkh={pkh[normKey(cell(r, 'A'))]} />
+              </div>
+            );
+          })}
         </div>
 
         {!showAll && shown.length < filtered.length && (
@@ -1463,6 +1559,16 @@ function BomKanban() {
   const eRef = useRef(null); if (!eRef.current) eRef.current = newBkStore();
   const iRef = useRef(null); if (!iRef.current) { iRef.current = newBkStore(); iRef.current.data = Array.from({ length: 30 }, blankRow); }
   const E = eRef.current, I = iRef.current;
+
+  // ----- Hộp thoại xác nhận (thay cho confirm() của trình duyệt) -----
+  const [dlg, setDlg] = useState(null);
+  const ask = (o) => new Promise(res => setDlg({ ...o, res }));
+  const closeDlg = (v) => { if (dlg) dlg.res(v); setDlg(null); };
+  useEffect(() => {
+    if (!dlg) return;
+    const h = (e) => { if (e.key === 'Escape') closeDlg(false); };
+    window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
+  }, [dlg]);
   const ok = (s) => setMsg({ t: 'ok', s }), bad = (s) => setMsg({ t: 'err', s });
 
   // ----- Tìm LSX -----
@@ -1484,7 +1590,8 @@ function BomKanban() {
   // ----- Lưu các dòng đã sửa -----
   const saveEdit = async () => {
     const idx = Array.from(E.dirty).sort((a, b) => a - b); if (!idx.length) return;
-    if (!confirm('Lưu ' + idx.length + ' dòng đã sửa vào Supabase?')) return;
+    if (!(await ask({ icon: 'fa-floppy-disk', title: 'Lưu thay đổi',
+      message: 'Cập nhật các dòng đã sửa vào Supabase.', chips: ['LSX: ' + E.loaded, idx.length + ' dòng'], confirmText: 'Lưu' }))) return;
     setBusy('Đang lưu…'); setMsg(null);
     try {
       let done = 0;
@@ -1504,7 +1611,10 @@ function BomKanban() {
   // ----- Xoá các dòng đang chọn (đỏ nhạt) khỏi Supabase -----
   const deleteSel = async () => {
     const idx = Array.from(E.sel).sort((a, b) => a - b); if (!idx.length) return;
-    if (!confirm('XOÁ VĨNH VIỄN ' + idx.length + ' dòng đã chọn khỏi Supabase?')) return;
+    if (!(await ask({ danger: true, icon: 'fa-trash-can', title: 'Xác nhận xoá BOM',
+      message: 'Bạn sắp xoá các dòng BOM đã chọn khỏi Supabase.',
+      chips: ['LSX: ' + E.loaded, idx.length + ' dòng'],
+      warn: 'Thao tác này không thể hoàn tác.', confirmText: 'Xoá vĩnh viễn' }))) return;
     setBusy('Đang xoá…'); setMsg(null);
     try {
       for (let s = 0; s < idx.length; s += 500) {
@@ -1529,7 +1639,8 @@ function BomKanban() {
     if (!rows.length) return alert('Chưa có dữ liệu để lưu.');
     const miss = rows.filter(x => !String(x.r[0]).trim());
     if (miss.length) return alert('Có ' + miss.length + ' dòng thiếu Lệnh sản xuất (cột A), ví dụ dòng ' + miss.slice(0, 5).map(x => x.i + 1).join(', ') + '. Hãy điền hoặc xoá các dòng này.');
-    if (!confirm('Thêm ' + rows.length + ' dòng mới vào Supabase?')) return;
+    if (!(await ask({ icon: 'fa-file-import', title: 'Thêm dòng mới',
+      message: 'Thêm các dòng vừa dán vào Supabase.', chips: [rows.length + ' dòng'], confirmText: 'Thêm vào' }))) return;
     setBusy('Đang lưu…'); setMsg(null);
     try {
       for (let s = 0; s < rows.length; s += 200) {
@@ -1590,6 +1701,24 @@ function BomKanban() {
         {mode === 'edit' && !loading && E.data.length > 0 && <SheetGrid key={'e' + gk} store={E} onChange={re} canAdd={false} />}
         {mode === 'import' && <SheetGrid key={'i' + gk} store={I} onChange={re} canAdd={true} />}
       </div>
+
+      {dlg && (
+        <div className="no-print" onMouseDown={() => closeDlg(false)}
+             style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(3px)' }}>
+          <div className="dlg" onMouseDown={e => e.stopPropagation()}>
+            <div className={'dlg-ico ' + (dlg.danger ? 'red' : 'blue')}><i className={'fa-solid ' + (dlg.icon || 'fa-circle-question')}></i></div>
+            <h3 className="dlg-title">{dlg.title}</h3>
+            <p className="dlg-msg">{dlg.message}</p>
+            {dlg.chips && <div className="dlg-chips">{dlg.chips.map((c, i) => <span key={i} className="dlg-chip">{c}</span>)}</div>}
+            {dlg.warn && <div className="dlg-warn"><i className="fa-solid fa-triangle-exclamation"></i> {dlg.warn}</div>}
+            <div className="dlg-act">
+              <button className="btn" onClick={() => closeDlg(false)}>Hủy</button>
+              <button className={'btn ' + (dlg.danger ? 'btn-red' : 'btn-primary')} autoFocus onClick={() => closeDlg(true)}>{dlg.confirmText || 'Đồng ý'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1674,10 +1803,9 @@ const MENU = [
 function Sidebar({ currentPage, setCurrentPage, collapsed, setCollapsed, counts }) {
   return (
     <aside className={'sb h-full bg-white border-r border-gray-200 flex flex-col ' + (collapsed ? 'collapsed' : '')}>
-      {/* Logo + PRODUCTION CONTROL */}
-      <div className="flex flex-col items-center justify-center border-b border-gray-100" style={{ height: 76 }}>
+      {/* Logo: cao đúng 56px bằng thanh header (h-14) nên hai đường kẻ ngang thẳng hàng, thu gọn vẫn thấy logo */}
+      <div className="flex items-center justify-center border-b border-gray-200 overflow-hidden" style={{ height: 56, flex: '0 0 56px' }}>
         <Logo collapsed={collapsed} />
-        {!collapsed && <h2 className="text-[11px] font-extrabold text-primary tracking-[0.18em] mt-1">PRODUCTION CONTROL</h2>}
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2">
