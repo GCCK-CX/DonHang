@@ -100,11 +100,36 @@ button, input, select, textarea { font-family: inherit; }
             border-radius:9px; background:#dc2626; color:#fff; font-size:11px; font-weight:800; line-height:18px;
             text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.4); pointer-events:none; }
 
-  /* ---------- IN ĐƠN HÀNG: cỡ chữ bảng Định mức ---------- */
+  /* ---------- IN ĐƠN HÀNG: cỡ chữ bảng Định mức (giữ nguyên) + font Cambria + zoom vừa khung ---------- */
   table.erp.dm td { font-size:32px; line-height:1.2; padding:8px 10px; }
   table.erp.dm td.sl   { font-size:46px; font-weight:800; }
   table.erp.dm td.bold { font-weight:800; }
-  table.erp.dm td.note { font-size:12.5px; font-weight:400; }   /* Ghi chú giữ cỡ cũ */
+  table.erp.dm td.note { font-size:22px; font-weight:400; }
+  table.erp.dm thead th { position:static; font-size:22px; }   /* tiêu đề cột: sau khi thu nhỏ vẫn đọc được */
+  table.erp.dm tr { break-inside:avoid; page-break-inside:avoid; }
+  .print-sheet, .print-sheet th, .print-sheet td { font-family: Cambria, 'Cambria Math', Georgia, 'Times New Roman', serif !important; }
+  .dm-zoom { zoom: var(--zs, .4); }   /* --zs do JS tính theo bề rộng khung xem */
+
+  /* ---------- BOM KANBAN: lưới giống Excel ---------- */
+  .bk-root { height:calc(100vh - 96px); display:flex; flex-direction:column; }
+  .xg-box { flex:1 1 auto; min-height:0; overflow:auto; background:#fff; border:1px solid var(--line); border-radius:12px;
+            outline:none; user-select:none; -webkit-user-select:none; }
+  table.xg { border-collapse:separate; border-spacing:0; table-layout:fixed; }
+  table.xg th, table.xg td { box-sizing:border-box; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0;
+            padding:0 6px; font-size:12.5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  table.xg td { height:28px; line-height:27px; cursor:cell; background:#fff; }
+  table.xg thead th { position:sticky; z-index:5; background:#1d58a8; color:#fff; font-weight:700; text-align:center; }
+  table.xg thead tr.h1 th { top:0; height:22px; font-size:11px; background:#164a8f; }
+  table.xg thead tr.h2 th { top:22px; height:46px; font-size:11px; white-space:normal; line-height:1.15; padding:2px 4px; }
+  table.xg .rn { position:sticky; left:0; z-index:3; background:#f1f5f9; color:#475569; text-align:center; font-weight:600; cursor:pointer; padding:0 2px; }
+  table.xg thead th.rn { z-index:7; background:#164a8f; color:#fff; }
+  table.xg tbody tr:hover td { background:#f1f7fd; }
+  table.xg td.dirty { background:#fef9c3 !important; }                         /* ô đã sửa, chưa lưu */
+  table.xg tr.sel td { background:#fecaca !important; }                        /* dòng được chọn: đỏ nhạt */
+  table.xg tr.sel td.rn { background:#f87171 !important; color:#fff; }
+  table.xg td.act { outline:2px solid #2563eb; outline-offset:-2px; }
+  table.xg td.ed { padding:0; }
+  .xg-in { width:100%; height:100%; border:0; outline:none; background:#fff; font:inherit; padding:0 6px; box-sizing:border-box; }
 
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
@@ -117,8 +142,8 @@ button, input, select, textarea { font-family: inherit; }
     .tem-page:not(:last-child) { break-after:page; page-break-after:always; }
     .tem-page .tem { transform:var(--tf); transform-origin:0 0; }
     table.erp thead th { position:static; }
-    .print-sheet table { font-size:9px; }
-    table.erp.dm td.note { font-size:9px; }
+    .print-sheet { overflow:visible !important; padding:0 !important; width:100% !important; }
+    .dm-zoom { zoom: var(--zp, .26); }   /* --zp = vừa bề ngang A4 ngang */
     .kb-root { height:auto !important; display:block !important; }
     .kb-top  { display:none !important; }
     .kb-scroll { overflow:visible !important; height:auto !important; padding:0 !important; background:none !important; border:none !important; border-radius:0 !important; }
@@ -585,6 +610,13 @@ function Bom() {
 // 6. IN ĐƠN HÀNG — bảng Định mức vật tư (hình 6), nhập LSX để tìm, nút in
 //    Dữ liệu lấy từ bảng Bomkanban (sheet BOM TỔNG VÀO). NC1..NC10 = 10 công đoạn đầu theo thứ tự gia công.
 // =====================================================================
+// Bề rộng cố định từng cột bảng Định mức (px, ở cỡ chữ gốc). Muốn cột nào rộng/hẹp hơn thì sửa số ở đây.
+const DM_W = [70, 200, 340, 170, 130, 130, 120, 130, 100, 100, 110, 140,        // TT … SL/ĐH
+              170, 170, 170, 170, 170, 170, 170, 170, 170, 170,                   // NC1 … NC10
+              130, 130, 220];                                                     // Bên giao, Bên nhận, Ghi chú
+const DM_TOTAL = DM_W.reduce((a, b) => a + b, 0);
+const DM_PRINT_W = 1050;   // vùng in A4 ngang: (297mm - 2×8mm lề) ≈ 1062px, chừa dư 1 chút
+
 function InDonHang() {
   const lsxList = useLsxList();
   const [input, setInput] = useState('');
@@ -593,6 +625,18 @@ function InDonHang() {
   const [lsxShown, setLsxShown] = useState('');
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+    // Zoom bảng vừa khung xem (màn hình) và vừa A4 ngang (khi in). Dùng CSS zoom nên cỡ chữ gốc không đổi.
+  const boxRef = useRef(null);
+  const [boxW, setBoxW] = useState(0);
+  useEffect(() => {
+    const el = boxRef.current; if (!el) return;
+    const m = () => { const w = el.clientWidth; if (w > 0) setBoxW(w); };
+    m();
+    const ro = new ResizeObserver(m); ro.observe(el);
+    return () => ro.disconnect();
+  }, [rows.length, loading]);
+  const zs = boxW ? Math.floor(Math.min(1, (boxW - 24) / DM_TOTAL) * 1000) / 1000 : 0.4;
+  const zp = Math.floor(DM_PRINT_W / DM_TOTAL * 1000) / 1000;
 
   const search = async (value) => {
     const v = (value ?? input).trim();
@@ -631,8 +675,10 @@ function InDonHang() {
       {!loading && !searched && <div className="no-print card p-6 text-center text-gray-400">Nhập mã lệnh sản xuất rồi bấm Tìm kiếm (hoặc nhấn Enter).</div>}
 
       {rows.length > 0 && !loading && (
-        <div className="print-sheet card overflow-auto p-2">
-          <table className="erp dm" style={{ minWidth: 1500 }}>
+        <div className="print-sheet card p-2" ref={boxRef} style={{ overflowX: 'hidden' }}>
+          <div className="dm-zoom" style={{ '--zs': zs, '--zp': zp }}>
+          <table className="erp dm" style={{ width: DM_TOTAL, tableLayout: 'fixed' }}>
+            <colgroup>{DM_W.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
             <thead>
               <tr>
                 <th colSpan={TOTAL_COLS} style={{ background: '#fff', color: '#000', fontSize: 46, lineHeight: 1.25, borderBottom: '1px solid #000' }}>
@@ -694,6 +740,7 @@ function InDonHang() {
               })}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>
@@ -1121,6 +1168,433 @@ function Kanban({ active }) {
 }
 
 // =====================================================================
+// 7B. BOM KANBAN — xem / sửa / xoá / nhập bảng Bomkanban như một trang Excel (cột A → FA)
+// =====================================================================
+const BK_N = 157;
+const BK_LETTERS = Array.from({ length: BK_N }, (_, i) => { let s = '', n = i + 1; while (n > 0) { s = String.fromCharCode(65 + (n - 1) % 26) + s; n = Math.floor((n - 1) / 26); } return s; });
+const BK_HEAD = [
+"Lệnh sản xuất", "STT", "Mã số sản phẩm", "Tên sản phẩm", "Dài", "Rộng", "Cao", "Dn", "Đơn vị tính", "SL/bộ", "SL/ĐH", "KL/SP", "KL/ĐH", "Mã vật tư",
+"Tên vật tư", "Mô tả thông tin kỹ thuật vật tư", "Mã số chi tiết", "Tên chi tiết", "Hình ảnh", "Yêu cầu", "Đề xuất", "Dài", "Rộng", "Cao",
+"Hình/ Hộp", "Dn", "Dt", "Dài", "Rộng", "Dày", "Hình/ Hộp", "Dn", "Dt", "Đơn vị tính", "SL/bộ", "SL/ĐH", "KL/CT", "KL/bộ", "KL/ĐH", "C.Tấm", "Laser",
+"CN", "PLM tay TP", "VM", "Mài", "Cắt NC ống, hộp", "LS ống/TH", "Cưa Vòng TP", "PLM tay TP", "Uốn/Lốc", "Đột/ dập", "Chấn NC/ CNC",
+"Lắp ráp LKCK ô tô", "Cán kệ kho lạnh", "Đúc nhôm", "Cưa GCCG", "Tiện", "Phay", "Nguội", "Nhiệt luyện", "Cán Tole-Diềm", "PLM tay HT",
+"Hàn Thùng tải", "Hàn Thùng Ben", "Lắp ráp Thùng", "XH LKR", "XH KX", "Lốc", "Hàn LK NĐH ghế", "Hàn LK Tải/ Bus", "Hàn SP trong nước",
+"Hàn SP xuất khẩu", "Lắp ráp LKCK", "Plasma tay", "SX ĐĨA", "SX VÀNH", "Hàn Mâm xe", "Phun bi", "Phốt phát", "ED", "Xi mạ", "Sơn bột", "Sơn màu",
+"Gác thùng", "Kho THCK", "Phay cơ NMK", "Tiện cơ NMK", "Khoan lỗ sâu CNC NMK", "Phay CNC NMK", "Làm nguội NMK", "Nhiệt luyện SKD NMK",
+"Mài mặt phẳng NMK", "Cắt dây NMK", "Bắn điện NMK", "Kiểm tra NMK", "Lắp ráp NMK", "Thử Khuôn NMK", "Kho NMK", "Đột KTV", "Dập KTV", "Laser 3D KTV",
+"Hàn đai ốc KTV", "Hàn Bấm KTV", "Hàn CO2 KTV", "Chuyền tán chassis KTV", "Gấp mí KTV", "Kho KTV", "Kho nhập TBCD", "Laser thép tấm TBCD",
+"Laser thép hình TBCD", "Cắt oxy-gas TBCD", "Cưa vòng TBCD", "Plasma tay TBCD", "Vát mép TBCD", "Khoan Taro TBCD", "Chấn TBCD",
+"Lốc/ Uốn/Ống gió TBCD", "Loe ống TBCD", "Hàn CNN TBCD", "Hàn CCCD TBCD", "Hàn KLM TBCD", "Hàn KCT TBCD", "Hàn TBNC TBCD", "Sơn Phun bi TBCD",
+"Sơn Phun thuỷ tinh TBCD", "Sơn Sơn màu TBCD", "Kho xuất TBCD", "Lắp ráp Tóp ống TBCD", "Lắp ráp Nối băng tải TBCD", "Lắp ráp TB CNN TBCD",
+"Lắp ráp CCCD TBCD", "Kho Đóng kiện TBCD", "Kho Giao hàng TBCD", "Lắp đặt TBCD", "Hàn KX Ghế DL TBDD", "Hàn Ống xả TBDD", "Hàn LK Tải/Bus, Lốc TBDD",
+"Hàn kết cấu kim loại & TBCN TBDD", "Hàn Kim loại màu TBDD", "Hàn SP xuất khẩu TBDD", "Lắp ráp SP nước ngoài TBDD", "Sơn bột TBDD", "Sơn màu TBDD",
+"Kho TBDD", "XH LKR SMRM", "XH KX SMRM", "X-Lắp ráp SMRM", "Kiểm định SMRM", "Đóng kiện SMRM", "Kho SMRM", "Part list", "NM Composite", "NM Cơ điện",
+"NM Nội thất", "Kho NM khác", "GHI CHÚ KỸ THUẬT", "Nhiệt ngoài"];
+const BK_WSPECIAL = { A: 120, B: 56, C: 130, D: 220, N: 110, O: 200, P: 260, Q: 150, R: 240, U: 110, EZ: 240, FA: 120 };
+const BK_COLW = BK_LETTERS.map(L => BK_WSPECIAL[L] || 90);
+const BK_RNW = 64, BK_RH = 28;
+const BK_LEFT = []; (() => { let x = BK_RNW; BK_COLW.forEach(w => { BK_LEFT.push(x); x += w; }); })();
+const BK_TOTALW = BK_RNW + BK_COLW.reduce((a, b) => a + b, 0);
+const blankRow = () => new Array(BK_N).fill('');
+const newBkStore = () => ({ data: [], orig: null, ids: [], nums: [], sel: new Set(), dirty: new Set(), undo: [], loaded: '' });
+
+// Đọc dữ liệu dán từ Excel / Google Sheet (tab = sang ô, xuống dòng = sang hàng, hỗ trợ ô có "" và xuống dòng)
+function parseTSV(text) {
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { if (ch === '"') { if (text[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += ch; }
+    else if (ch === '"' && cur === '') q = true;
+    else if (ch === '\t') { row.push(cur); cur = ''; }
+    else if (ch === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+    else if (ch !== '\r') cur += ch;
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+const tsvQ = (v) => /[\t\n"]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+
+// 1 dòng của lưới (memo: cuộn / chọn chỉ vẽ lại dòng thật sự đổi)
+const XRow = React.memo(function XRow({ r, row, orig, sel, actC, ed, no, H }) {
+  return (
+    <tr className={sel ? 'sel' : ''}>
+      <td className="rn" onMouseDown={e => H.current.down(e, r, -1)}>{no}</td>
+      {row.map((v, c) => {
+        const editing = ed && ed.c === c;
+        return (
+          <td key={c} className={(orig && orig[c] !== v ? 'dirty ' : '') + (actC === c ? 'act ' : '') + (editing ? 'ed' : '')}
+              onMouseDown={e => H.current.down(e, r, c)} onDoubleClick={() => H.current.edit(r, c, false)}>
+            {editing
+              ? <input className="xg-in" autoFocus value={ed.v}
+                  onFocus={e => { if (ed.sel) e.target.select(); }}
+                  onChange={e => H.current.edChange(e.target.value)}
+                  onKeyDown={e => H.current.edKey(e)}
+                  onBlur={() => H.current.edBlur()} />
+              : v}
+          </td>
+        );
+      })}
+    </tr>
+  );
+});
+
+function SheetGrid({ store, onChange, canAdd }) {
+  const boxRef = useRef(null), headRef = useRef(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const [vh, setVh] = useState(600);
+  const [act, setAct] = useState({ r: 0, c: 0 });
+  const [ed, setEd] = useState(null);
+  const [drag, setDrag] = useState(null);
+  const edRef = useRef(null), dragRef = useRef(null), H = useRef({});
+  const winMove = useRef((e) => H.current.move(e)).current;
+  const winUp = useRef(() => H.current.up()).current;
+  const n = store.data.length;
+  const headH = () => (headRef.current ? headRef.current.offsetHeight : 68);
+
+  useEffect(() => {
+    const el = boxRef.current; if (!el) return;
+    const m = () => { if (el.clientHeight > 0) setVh(el.clientHeight); };
+    m(); const ro = new ResizeObserver(m); ro.observe(el);
+    return () => {
+      ro.disconnect();
+      if (dragRef.current) clearInterval(dragRef.current.timer);
+      window.removeEventListener('mousemove', winMove); window.removeEventListener('mouseup', winUp);
+    };
+  }, []);
+
+  // ---------- dữ liệu ----------
+  const refreshDirty = (r) => {
+    if (!store.orig) return;
+    const o = store.orig[r], d = store.data[r];
+    const diff = !o || d.some((x, i) => x !== o[i]);
+    if (diff) store.dirty.add(r); else store.dirty.delete(r);
+  };
+  const applyRows = (map) => {                               // map: Map(r -> dòng mới). Lưu dòng cũ để hoàn tác
+    const snap = [];
+    map.forEach((row, r) => { snap.push({ r, row: store.data[r] }); store.data[r] = row; refreshDirty(r); });
+    store.undo.push(snap); if (store.undo.length > 100) store.undo.shift();
+    onChange();
+  };
+  const setCell = (r, c, v) => {
+    if (store.data[r][c] === v) return;
+    const row = store.data[r].slice(); row[c] = v; applyRows(new Map([[r, row]]));
+  };
+  const undo = () => {
+    const snap = store.undo.pop(); if (!snap) return;
+    snap.forEach(({ r, row }) => { if (r < store.data.length) { store.data[r] = row; refreshDirty(r); } });
+    onChange();
+  };
+
+  // ---------- di chuyển ----------
+  const ensureVisible = (r, c) => {
+    const el = boxRef.current; if (!el) return;
+    const hh = headH(), top = hh + r * BK_RH;
+    if (top < el.scrollTop + hh) el.scrollTop = top - hh;
+    else if (top + BK_RH > el.scrollTop + el.clientHeight) el.scrollTop = top + BK_RH - el.clientHeight;
+    const left = BK_LEFT[c], w = BK_COLW[c];
+    if (left < el.scrollLeft + BK_RNW) el.scrollLeft = left - BK_RNW;
+    else if (left + w > el.scrollLeft + el.clientWidth) el.scrollLeft = left + w - el.clientWidth;
+  };
+  const moveTo = (r, c) => {
+    r = Math.max(0, Math.min(store.data.length - 1, r)); c = Math.max(0, Math.min(BK_N - 1, c));
+    setAct({ r, c }); ensureVisible(r, c);
+  };
+
+  // ---------- sửa ô ----------
+  const startEdit = (r, c, selAll) => { const e = { r, c, v: store.data[r][c], sel: !!selAll }; edRef.current = e; setEd(e); };
+  const edChange = (v) => { const e = { ...edRef.current, v, sel: false }; edRef.current = e; setEd(e); };
+  const finishEdit = (save, dr, dc, focusBack) => {
+    const e = edRef.current; if (!e) return;
+    edRef.current = null; setEd(null);
+    if (save) {
+      const old = store.data[e.r][e.c];
+      if (e.v !== old && e.v !== old.replace(/[\r\n]+/g, '')) setCell(e.r, e.c, e.v);   // ô có xuống dòng mà không gõ gì thì giữ nguyên
+    }
+    if (dr || dc) moveTo(e.r + dr, e.c + dc);
+    if (focusBack && boxRef.current) boxRef.current.focus({ preventScroll: true });
+  };
+  const edKey = (e) => {
+    if (e.nativeEvent.isComposing) return;
+    if (e.key === 'Enter') { e.preventDefault(); finishEdit(true, e.shiftKey ? -1 : 1, 0, true); }
+    else if (e.key === 'Tab') { e.preventDefault(); finishEdit(true, 0, e.shiftKey ? -1 : 1, true); }
+    else if (e.key === 'Escape') { e.preventDefault(); finishEdit(false, 0, 0, true); }
+  };
+  const edBlur = () => { if (edRef.current) finishEdit(true, 0, 0, false); };
+
+  // ---------- chuột: chọn ô / kéo chọn nhiều dòng ----------
+  const rowAt = (y) => {
+    const el = boxRef.current, rect = el.getBoundingClientRect();
+    const yy = y - rect.top + el.scrollTop - headH();
+    return Math.max(0, Math.min(store.data.length - 1, Math.floor(yy / BK_RH)));
+  };
+  const down = (e, r, c) => {
+    if (e.button !== 0) return;
+    const cur = edRef.current;
+    if (cur && cur.r === r && cur.c === c) return;            // đang gõ trong chính ô này
+    if (cur) finishEdit(true, 0, 0, false);
+    if (c >= 0) setAct({ r, c });
+    boxRef.current.focus({ preventScroll: true });
+    dragRef.current = { a: r, b: r, y: e.clientY, mode: store.sel.has(r) ? 'remove' : 'add', rowNo: c < 0 };
+    window.addEventListener('mousemove', winMove); window.addEventListener('mouseup', winUp);
+    dragRef.current.timer = setInterval(() => H.current.tick(), 40);
+  };
+  const move = (e) => { if (dragRef.current) dragRef.current.y = e.clientY; };
+  const tick = () => {
+    const d = dragRef.current; if (!d) return;
+    const el = boxRef.current, rect = el.getBoundingClientRect();
+    if (d.y > rect.bottom - 20) el.scrollTop += 30;           // kéo sát mép dưới/trên thì tự cuộn
+    else if (d.y < rect.top + headH() + 10) el.scrollTop -= 30;
+    const b = rowAt(d.y);
+    if (b !== d.b) { d.b = b; setDrag({ a: d.a, b, mode: d.mode }); }
+  };
+  const up = () => {
+    const d = dragRef.current; if (!d) return;
+    clearInterval(d.timer); dragRef.current = null;
+    window.removeEventListener('mousemove', winMove); window.removeEventListener('mouseup', winUp);
+    setDrag(null);
+    if (d.a !== d.b) {                                        // kéo qua nhiều dòng: chọn (hoặc bỏ chọn nếu bắt đầu từ dòng đang chọn)
+      const lo = Math.min(d.a, d.b), hi = Math.max(d.a, d.b);
+      for (let r = lo; r <= hi; r++) { if (d.mode === 'add') store.sel.add(r); else store.sel.delete(r); }
+      onChange();
+    } else if (d.rowNo) {                                     // bấm số dòng: đảo chọn 1 dòng
+      if (store.sel.has(d.a)) store.sel.delete(d.a); else store.sel.add(d.a);
+      onChange();
+    }
+  };
+
+  // ---------- bàn phím / clipboard ----------
+  const onKey = (e) => {
+    if (e.target.tagName === 'INPUT' || !n) return;
+    if (e.ctrlKey || e.metaKey) { if (e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); } return; }
+    const { r, c } = act;
+    const go = (dr, dc) => { e.preventDefault(); moveTo(r + dr, c + dc); };
+    switch (e.key) {
+      case 'ArrowDown': return go(1, 0);
+      case 'ArrowUp': return go(-1, 0);
+      case 'ArrowLeft': return go(0, -1);
+      case 'ArrowRight': return go(0, 1);
+      case 'Tab': return go(0, e.shiftKey ? -1 : 1);
+      case 'PageDown': return go(15, 0);
+      case 'PageUp': return go(-15, 0);
+      case 'Home': return go(0, -c);
+      case 'End': return go(0, BK_N - 1 - c);
+      case 'Enter': case 'F2': e.preventDefault(); return startEdit(r, c, false);
+      case 'Delete': case 'Backspace': e.preventDefault(); return setCell(r, c, '');
+      case 'Escape': if (store.sel.size) { store.sel.clear(); onChange(); } return;
+      default:
+        if (e.key.length === 1 || e.key === 'Process' || e.key === 'Unidentified') startEdit(r, c, true);   // gõ thẳng để thay nội dung ô
+    }
+  };
+  const onCopy = (e) => {
+    if (e.target.tagName === 'INPUT' || !n) return;
+    const text = store.sel.size
+      ? Array.from(store.sel).sort((a, b) => a - b).map(r => store.data[r].map(tsvQ).join('\t')).join('\n')
+      : tsvQ(store.data[act.r][act.c]);
+    e.clipboardData.setData('text/plain', text); e.preventDefault();
+  };
+  const onPaste = (e) => {
+    if (e.target.tagName === 'INPUT') return;
+    e.preventDefault();
+    const text = e.clipboardData.getData('text'); if (!text || !n) return;
+    const m = parseTSV(text), r0 = act.r, c0 = act.c;
+    let skipped = 0;
+    const need = r0 + m.length - store.data.length;
+    if (need > 0) { if (canAdd) { for (let k = 0; k < need; k++) store.data.push(blankRow()); } else skipped = need; }
+    const map = new Map();
+    m.forEach((line, i) => {
+      const r = r0 + i; if (r >= store.data.length) return;
+      const row = store.data[r].slice();
+      line.forEach((v, j) => { if (c0 + j < BK_N) row[c0 + j] = v; });
+      map.set(r, row);
+    });
+    applyRows(map);
+    if (skipped) alert('Đã bỏ qua ' + skipped + ' dòng cuối vì vượt quá số dòng đang hiển thị. Muốn thêm dòng mới hãy dùng nút Import.');
+  };
+
+  H.current = { down, edit: startEdit, edChange, edKey, edBlur, move, up, tick };
+
+  // ---------- vẽ (chỉ vẽ các dòng đang nhìn thấy) ----------
+  const first = Math.max(0, Math.floor(scrollTop / BK_RH) - 6);
+  const last = Math.min(n, first + Math.ceil(vh / BK_RH) + 14);
+  const dragOn = drag && drag.a !== drag.b;
+  const lo = dragOn ? Math.min(drag.a, drag.b) : 0, hi = dragOn ? Math.max(drag.a, drag.b) : -1;
+  const isSel = (r) => (dragOn && r >= lo && r <= hi) ? drag.mode === 'add' : store.sel.has(r);
+
+  return (
+    <div ref={boxRef} className="xg-box" tabIndex={0} onScroll={e => setScrollTop(e.currentTarget.scrollTop)}
+         onKeyDown={onKey} onCopy={onCopy} onPaste={onPaste}>
+      <table className="xg" style={{ width: BK_TOTALW }}>
+        <colgroup><col style={{ width: BK_RNW }} />{BK_COLW.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+        <thead ref={headRef}>
+          <tr className="h1">
+            <th className="rn" title="Chọn / bỏ chọn tất cả"
+                onClick={() => { if (store.sel.size === n) store.sel.clear(); else for (let i = 0; i < n; i++) store.sel.add(i); onChange(); }}>#</th>
+            {BK_LETTERS.map(L => <th key={L}>{L}</th>)}
+          </tr>
+          <tr className="h2">
+            <th className="rn"></th>
+            {BK_HEAD.map((h, i) => <th key={i} title={BK_LETTERS[i] + ': ' + h}>{h}</th>)}
+          </tr>
+        </thead>
+        <tbody>
+          {first > 0 && <tr><td colSpan={BK_N + 1} style={{ height: first * BK_RH, padding: 0, border: 0 }}></td></tr>}
+          {Array.from({ length: Math.max(0, last - first) }, (_, k) => {
+            const r = first + k;
+            return <XRow key={r} r={r} row={store.data[r]} orig={store.orig ? store.orig[r] : null} sel={isSel(r)}
+                         actC={act.r === r ? act.c : -1} ed={ed && ed.r === r ? ed : null}
+                         no={store.nums.length ? store.nums[r] : r + 1} H={H} />;
+          })}
+          {last < n && <tr><td colSpan={BK_N + 1} style={{ height: (n - last) * BK_RH, padding: 0, border: 0 }}></td></tr>}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function BomKanban() {
+  const [mode, setMode] = useState('edit');            // 'edit' = tìm & sửa · 'import' = dán dữ liệu mới
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [msg, setMsg] = useState(null);
+  const [gk, setGk] = useState(0);                      // đổi số này để dựng lại lưới
+  const [, bump] = useState(0);
+  const re = () => bump(x => x + 1);
+  const eRef = useRef(null); if (!eRef.current) eRef.current = newBkStore();
+  const iRef = useRef(null); if (!iRef.current) { iRef.current = newBkStore(); iRef.current.data = Array.from({ length: 30 }, blankRow); }
+  const E = eRef.current, I = iRef.current;
+  const ok = (s) => setMsg({ t: 'ok', s }), bad = (s) => setMsg({ t: 'err', s });
+
+  // ----- Tìm LSX -----
+  const search = async (val) => {
+    const v = (typeof val === 'string' ? val : input).trim(); if (!v) return;
+    if (E.dirty.size && !confirm('Đang có ' + E.dirty.size + ' dòng sửa chưa lưu, sẽ mất nếu tìm lại. Tiếp tục?')) return;
+    setLoading(true); setMsg(null);
+    try {
+      let data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', v).order('sheet_row'));
+      if (!data.length) data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').ilike('col_a', `%${v}%`).order('sheet_row'));
+      const arr = data.map(d => BK_LETTERS.map(L => { const x = d['col_' + L.toLowerCase()]; return x == null ? '' : String(x); }));
+      E.data = arr; E.orig = arr.slice(); E.ids = data.map(d => d.id); E.nums = data.map(d => d.sheet_row);
+      E.sel = new Set(); E.dirty = new Set(); E.undo = []; E.loaded = v;
+      setGk(k => k + 1);
+    } catch (e) { bad('Lỗi tải dữ liệu: ' + e.message); }
+    setLoading(false);
+  };
+
+  // ----- Lưu các dòng đã sửa -----
+  const saveEdit = async () => {
+    const idx = Array.from(E.dirty).sort((a, b) => a - b); if (!idx.length) return;
+    if (!confirm('Lưu ' + idx.length + ' dòng đã sửa vào Supabase?')) return;
+    setBusy('Đang lưu…'); setMsg(null);
+    try {
+      let done = 0;
+      for (let s = 0; s < idx.length; s += 200) {
+        const part = idx.slice(s, s + 200).map(r => [E.ids[r]].concat(E.data[r]));
+        const { data, error } = await supabase.rpc('bk_update_rows', { p_rows: part });
+        if (error) throw error;
+        done += data.updated; setBusy('Đang lưu… ' + Math.min(s + 200, idx.length) + '/' + idx.length);
+      }
+      idx.forEach(r => { E.orig[r] = E.data[r]; }); E.dirty.clear();
+      if (done < idx.length) bad('Đã lưu ' + done + '/' + idx.length + ' dòng. Số còn lại không tìm thấy (có thể vừa được đồng bộ lại từ Google Sheet) — hãy bấm Tìm lại.');
+      else ok('✔ Đã lưu ' + done + ' dòng vào Supabase.');
+    } catch (e) { bad('Lưu thất bại: ' + (e.message || e)); }
+    setBusy(''); re();
+  };
+
+  // ----- Xoá các dòng đang chọn (đỏ nhạt) khỏi Supabase -----
+  const deleteSel = async () => {
+    const idx = Array.from(E.sel).sort((a, b) => a - b); if (!idx.length) return;
+    if (!confirm('XOÁ VĨNH VIỄN ' + idx.length + ' dòng đã chọn khỏi Supabase?')) return;
+    setBusy('Đang xoá…'); setMsg(null);
+    try {
+      for (let s = 0; s < idx.length; s += 500) {
+        const { error } = await supabase.rpc('bk_delete_ids', { p_ids: idx.slice(s, s + 500).map(r => E.ids[r]) });
+        if (error) throw error;
+      }
+      const keep = E.data.map((_, i) => i).filter(i => !E.sel.has(i));
+      const oldDirty = E.dirty;
+      E.data = keep.map(i => E.data[i]); E.orig = keep.map(i => E.orig[i]);
+      E.ids = keep.map(i => E.ids[i]); E.nums = keep.map(i => E.nums[i]);
+      E.dirty = new Set(); keep.forEach((o, nI) => { if (oldDirty.has(o)) E.dirty.add(nI); });
+      E.sel = new Set(); E.undo = [];
+      ok('✔ Đã xoá ' + idx.length + ' dòng.'); setGk(k => k + 1);
+    } catch (e) { bad('Xoá thất bại: ' + (e.message || e)); }
+    setBusy(''); re();
+  };
+
+  // ----- Import: lưu các dòng đã dán -----
+  const importFilled = () => I.data.map((r, i) => ({ r, i })).filter(x => x.r.some(v => String(v).trim() !== ''));
+  const saveImport = async () => {
+    const rows = importFilled();
+    if (!rows.length) return alert('Chưa có dữ liệu để lưu.');
+    const miss = rows.filter(x => !String(x.r[0]).trim());
+    if (miss.length) return alert('Có ' + miss.length + ' dòng thiếu Lệnh sản xuất (cột A), ví dụ dòng ' + miss.slice(0, 5).map(x => x.i + 1).join(', ') + '. Hãy điền hoặc xoá các dòng này.');
+    if (!confirm('Thêm ' + rows.length + ' dòng mới vào Supabase?')) return;
+    setBusy('Đang lưu…'); setMsg(null);
+    try {
+      for (let s = 0; s < rows.length; s += 200) {
+        const { error } = await supabase.rpc('bk_insert_rows', { p_rows: rows.slice(s, s + 200).map(x => x.r) });
+        if (error) throw error;
+        setBusy('Đang lưu… ' + Math.min(s + 200, rows.length) + '/' + rows.length);
+      }
+      const firstLsx = String(rows[0].r[0]).trim();
+      I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = [];
+      ok('✔ Đã thêm ' + rows.length + ' dòng vào Supabase.');
+      setMode('edit'); setInput(firstLsx); setGk(k => k + 1); setBusy('');
+      E.dirty = new Set(); search(firstLsx); return;
+    } catch (e) { bad('Lưu thất bại: ' + (e.message || e)); }
+    setBusy('');
+  };
+  const addRows = () => { for (let k = 0; k < 100; k++) I.data.push(blankRow()); re(); };
+  const clearImport = () => { if (!confirm('Xoá toàn bộ nội dung đang dán?')) return; I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = []; setGk(k => k + 1); };
+  const delLocal = () => { const keep = I.data.filter((_, i) => !I.sel.has(i)); I.data = keep.length ? keep : [blankRow()]; I.sel = new Set(); I.undo = []; setGk(k => k + 1); };
+
+  const dis = (b) => ({ disabled: b || !!busy, style: { opacity: (b || busy) ? .5 : 1 } });
+
+  return (
+    <div className="bk-root">
+      <div className="no-print space-y-3 pb-3" style={{ flex: '0 0 auto' }}>
+        <div className="card p-3 flex flex-wrap items-center gap-3">
+          {mode === 'edit' ? (<>
+            <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
+            <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()}
+              placeholder="Nhập lệnh sản xuất rồi nhấn Enter…" className="inp" style={{ width: 280 }} />
+            <button className="btn btn-primary" onClick={() => search()}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
+            {E.loaded && <span className="text-xs text-slate-500">{E.data.length} dòng · <b className="text-amber-600">{E.dirty.size} dòng đã sửa</b> · <b className="text-red-600">{E.sel.size} dòng đang chọn</b></span>}
+            <button className="btn ml-auto" onClick={() => setMode('import')}><i className="fa-solid fa-file-import"></i> Import</button>
+            <button className="btn btn-red" onClick={deleteSel} {...dis(!E.sel.size)}><i className="fa-solid fa-trash"></i> Xoá dòng đã chọn ({E.sel.size})</button>
+            <button className="btn btn-green" onClick={saveEdit} {...dis(!E.dirty.size)}><i className="fa-solid fa-floppy-disk"></i> Lưu thay đổi ({E.dirty.size})</button>
+          </>) : (<>
+            <button className="btn" onClick={() => setMode('edit')}><i className="fa-solid fa-arrow-left"></i> Quay lại</button>
+            <span className="font-bold text-slate-700 text-sm">Import BOM Kanban</span>
+            <span className="text-xs text-slate-500">{importFilled().length} dòng có dữ liệu · {I.sel.size} dòng đang chọn</span>
+            <button className="btn ml-auto" onClick={addRows}><i className="fa-solid fa-plus"></i> Thêm 100 dòng</button>
+            <button className="btn" onClick={delLocal} {...dis(!I.sel.size)}><i className="fa-solid fa-eraser"></i> Bỏ dòng đã chọn</button>
+            <button className="btn" onClick={clearImport}>Xoá hết</button>
+            <button className="btn btn-green" onClick={saveImport} {...dis(!importFilled().length)}><i className="fa-solid fa-floppy-disk"></i> Lưu vào Supabase</button>
+          </>)}
+        </div>
+        <p className="text-xs text-gray-400 px-1">
+          {mode === 'edit'
+            ? 'Click ô để chọn · gõ hoặc F2/nhấp đúp để sửa · Ctrl+C / Ctrl+V · Ctrl+Z hoàn tác · Delete xoá ô · Kéo chuột qua nhiều dòng để chọn (đỏ nhạt), kéo lại lần nữa để bỏ chọn.'
+            : 'Chọn ô A1 rồi Ctrl+V để dán dữ liệu từ Excel / Google Sheet (cột A → FA). Dòng nào có dữ liệu sẽ được thêm mới; cột A (Lệnh sản xuất) là bắt buộc.'}
+        </p>
+        {busy && <div className="card p-3 text-sm text-blue-700 bg-blue-50">{busy}</div>}
+        {msg && <div className={'card p-3 text-sm ' + (msg.t === 'err' ? 'text-red-700 bg-red-50' : 'text-green-700 bg-green-50')}>{msg.s}</div>}
+      </div>
+
+      <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        {mode === 'edit' && loading && <div className="card p-6 text-center text-gray-400">Đang tải…</div>}
+        {mode === 'edit' && !loading && !E.loaded && <div className="card p-6 text-center text-gray-400">Nhập lệnh sản xuất rồi nhấn Enter để hiển thị dữ liệu cần sửa.</div>}
+        {mode === 'edit' && !loading && E.loaded && !E.data.length && <div className="card p-6 text-center text-gray-400">Không tìm thấy lệnh sản xuất “{E.loaded}”.</div>}
+        {mode === 'edit' && !loading && E.data.length > 0 && <SheetGrid key={'e' + gk} store={E} onChange={re} canAdd={false} />}
+        {mode === 'import' && <SheetGrid key={'i' + gk} store={I} onChange={re} canAdd={true} />}
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
 // 8. PHÂN QUYỀN — danh sách người dùng/vai trò thủ công (bảng "NguoiDung")
 // =====================================================================
 function PhanQuyen() {
@@ -1191,7 +1665,8 @@ const MENU = [
     { id: 'bom', name: 'BOM', icon: 'fa-cubes' } ] },
   { group: 'Đơn hàng', icon: 'fa-clipboard-list', items: [
     { id: 'indonhang', name: 'In đơn hàng', icon: 'fa-print' },
-    { id: 'kanban', name: 'Kanban', icon: 'fa-tags', badge: 'kanban' } ] },
+    { id: 'kanban', name: 'Kanban', icon: 'fa-tags', badge: 'kanban' },
+    { id: 'bomkanban', name: 'BOM Kanban', icon: 'fa-table-cells' } ] },
   { group: 'Hệ thống', icon: 'fa-gear', items: [
     { id: 'phanquyen', name: 'Phân quyền', icon: 'fa-user-shield' } ] },
 ];
@@ -1263,6 +1738,7 @@ function MainApp() {
           {currentPage === 'bom' && <Bom />}
           {visited.indonhang && <div style={{ display: currentPage === 'indonhang' ? 'block' : 'none' }}><InDonHang /></div>}
           {visited.kanban && <div style={{ display: currentPage === 'kanban' ? 'block' : 'none' }}><Kanban active={currentPage === 'kanban'} /></div>}
+          {visited.bomkanban && <div style={{ display: currentPage === 'bomkanban' ? 'block' : 'none' }}><BomKanban /></div>}
           {currentPage === 'phanquyen' && <PhanQuyen />}
         </main>
       </div>
