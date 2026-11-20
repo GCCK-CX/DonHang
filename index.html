@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Production Control v2 - ERP</title>
 
-<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <script src="https://cdn.tailwindcss.com"></script>
 <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
@@ -23,7 +23,8 @@
 <style>
   :root { --blue:#1d58a8; --blue-soft:#e6f2fb; --line:#dbe4ee; }
   html, body, #root { height: 100%; margin: 0; }
-  body { background-color: #eef2f7; font-family: 'Be Vietnam Pro', sans-serif; color:#1e293b; }
+  body { background-color: #eef2f7; font-family: 'Roboto', sans-serif; color:#1e293b; }
+button, input, select, textarea { font-family: inherit; }
   ::-webkit-scrollbar { height: 10px; width: 10px; }
   ::-webkit-scrollbar-thumb { background: #c3d0e0; border-radius: 6px; }
 
@@ -73,8 +74,8 @@
   .tem { display:grid; box-sizing:border-box; width:600px; height:400px;
          grid-template-columns:minmax(0,40fr) minmax(0,193fr) minmax(0,91fr) minmax(0,169fr) minmax(0,78fr) minmax(0,155fr) minmax(0,86fr) minmax(0,170fr);
          grid-template-rows:repeat(12, minmax(0,1fr));
-         border-top:2px solid #111; border-left:2px solid #111; background:#fff; color:#111; font-size:13px; line-height:1.1; }
-  .tem .tc { border-right:2px solid #111; border-bottom:2px solid #111; display:flex; align-items:center; justify-content:center;
+         border-top:1px solid #111; border-left:1px solid #111; background:#fff; color:#111; font-size:13px; line-height:1.1; }
+  .tem .tc { border-right:1px solid #111; border-bottom:1px solid #111; display:flex; align-items:center; justify-content:center;
              text-align:center; padding:1px 4px; font-weight:700; min-width:0; min-height:0; overflow:hidden; }
   .tem .fit { display:block; width:100%; }
   .tem .fit.nw { white-space:nowrap; }
@@ -146,6 +147,7 @@ const TB_TIEN = "KQ_Tien";
 const TB_PHAY = "KQ_Phay";
 const TB_NGUOI = "KQ_Nguoi";
 const TB_KANBAN = "Bomkanban";   // MỚI: dữ liệu sheet "BOM TỔNG VÀO" (cột col_a ... col_fa)
+const TB_PKH = "LSX_PKH";        // Số đơn hàng / Khách hàng / Ngày hoàn thành theo LSX
 
 // Logo THACO: để trống = dùng logo chữ vẽ sẵn. Có file logo thật thì điền đường dẫn, ví dụ "logo-thaco.png"
 const LOGO_URL = "";
@@ -194,11 +196,30 @@ const PROC_COLS = [["AN", "C.Tấm"], ["AO", "Laser"], ["AP", "CN"], ["AQ", "PLM
 const colKey = (L) => 'col_' + L.toLowerCase();                       // 'AB' -> 'col_ab'
 const cell = (r, L) => (r[colKey(L)] == null ? '' : String(r[colKey(L)]).trim());
 
-// Danh sách công đoạn của 1 dòng BOM, sắp theo thứ tự gia công
-const getSteps = (r) => PROC_COLS
-  .map(([L, label]) => ({ L, label, n: parseFloat(cell(r, L)) }))
-  .filter(s => s.n > 0)
-  .sort((a, b) => a.n - b.n);
+// Danh sách công đoạn của 1 dòng BOM, sắp theo thứ tự gia công.
+// Ô có thể chứa nhiều số: "3;10;14" hoặc "2,8,11" -> công đoạn đó xuất hiện ở bước 3, 10 và 14.
+const getSteps = (r) => {
+  const out = [];
+  PROC_COLS.forEach(([L, label]) => {
+    const v = cell(r, L);
+    if (!v) return;
+    v.split(/[;,]/).forEach(p => {
+      const n = parseInt(p.trim(), 10);
+      if (n > 0) out.push({ L, label, n });
+    });
+  });
+  return out.sort((a, b) => a.n - b.n);
+};
+
+// Bản đồ { số_công_đoạn: tên } — số nào không có công đoạn thì để trống
+const getStepMap = (r) => {
+  const m = {};
+  getSteps(r).forEach(s => { m[s.n] = m[s.n] ? m[s.n] + ' / ' + s.label : s.label; });
+  return m;
+};
+
+// Chuẩn hoá mã LSX để đối chiếu
+const normKey = (s) => String(s == null ? '' : s).trim().toUpperCase();
 
 // Đọc hết bảng (Supabase chỉ trả tối đa 1000 dòng/lần nên phải lặp)
 async function fetchAll(makeQuery) {
@@ -646,7 +667,7 @@ function InDonHang() {
             </thead>
             <tbody>
               {rows.map((r, idx) => {
-                const steps = getSteps(r);
+                const stepMap = getStepMap(r);
                 const bd = { border: '1px solid #000' };
                 return (
                   <tr key={r.id}>
@@ -663,7 +684,7 @@ function InDonHang() {
                     <td className="ctr" style={bd}>{cell(r, 'AI')}</td>
                     <td className="ctr sl" style={bd}>{cell(r, 'AJ')}</td>
                     {Array.from({ length: NC }, (_, i) => (
-                      <td key={i} className="ctr bold" style={{ ...bd, whiteSpace: 'normal' }}>{steps[i] ? steps[i].label : ''}</td>
+                      <td key={i} className="ctr bold" style={{ ...bd, whiteSpace: 'normal' }}>{stepMap[i + 1] || ''}</td>
                     ))}
                     <td style={bd}></td>
                     <td style={bd}></td>
@@ -723,9 +744,15 @@ function Fit({ children, nowrap, min = 0.4 }) {
 const TLb = ({ c, children }) => <div className="tc lbl" style={{ gridColumn: c }}><Fit nowrap>{children}</Fit></div>;
 const TVl = ({ c, big, nowrap, children }) => <div className={'tc ' + (big ? 'big' : '')} style={{ gridColumn: c }}><Fit nowrap={nowrap || big}>{children}</Fit></div>;
 
-function TemKanban({ r }) {
+function TemKanban({ r, pkh }) {
   const d = {}; Object.keys(TEM_MAP).forEach(k => { d[k] = TEM_MAP[k](r); });
-  const steps = getSteps(r).map(s => s.label);
+  // Dữ liệu từ bảng LSX_PKH: ô 1 = Số đơn hàng, ô 2 = Khách hàng, ô 3 = Ngày hoàn thành
+  if (pkh) {
+    d.don_hang = pkh.so_don_hang || '';
+    d.khach_hang = pkh.khach_hang || '';
+    d.ngay_ht = pkh.ngay_hoan_thanh || '';
+  }
+  const stepMap = getStepMap(r);
   // Mã QR theo hình 4:  LSX | STT chi tiết | Mã chi tiết | Tên chi tiết | Số lượng
   const qrText = [d.lsx, d.stt_ct, d.ma_ct, d.ten_ct, d.so_luong].join(' | ');
 
@@ -751,11 +778,11 @@ function TemKanban({ r }) {
       {[0, 1, 2, 3, 4].map(i => (
         <React.Fragment key={i}>
           <div className="tc" style={{ gridColumn: '1 / 2' }}>{i + 1}</div>
-          <div className="tc nm" style={{ gridColumn: '2 / 3' }}><Fit>{steps[i] || ''}</Fit></div>
+          <div className="tc nm" style={{ gridColumn: '2 / 3' }}><Fit>{stepMap[i + 1] || ''}</Fit></div>
           <div className="tc" style={{ gridColumn: '3 / 4' }}>{i + 6}</div>
-          <div className="tc nm" style={{ gridColumn: '4 / 5' }}><Fit>{steps[i + 5] || ''}</Fit></div>
+          <div className="tc nm" style={{ gridColumn: '4 / 5' }}><Fit>{stepMap[i + 6] || ''}</Fit></div>
           <div className="tc" style={{ gridColumn: '5 / 6' }}>{i + 11}</div>
-          <div className="tc nm" style={{ gridColumn: '6 / 7' }}><Fit>{steps[i + 10] || ''}</Fit></div>
+          <div className="tc nm" style={{ gridColumn: '6 / 7' }}><Fit>{stepMap[i + 11] || ''}</Fit></div>
           {i === 0 && <div className="tc qrcell" style={{ gridColumn: '7 / 9', gridRow: 'span 5' }}><QR text={qrText} size="100%" /></div>}
         </React.Fragment>
       ))}
@@ -866,6 +893,9 @@ function Kanban({ active }) {
   const [page, setPage] = useState(1);
   const [showAll, setShowAll] = useState(false);
   const [printing, setPrinting] = useState(false);
+  const [cfgOpen, setCfgOpen] = useState(false);   // hộp thoại Cấu hình
+  const [sttInput, setSttInput] = useState('');    // lọc theo STT chi tiết: "5,14,23"
+  const [pkh, setPkh] = useState({});              // dữ liệu LSX_PKH: { 'TBCN.564/11': {...} }
   const PAGE = 12;
   const GAP = 10;                                   // khoảng cách giữa các tem (px) — muốn sát hơn thì giảm số này
 
@@ -874,11 +904,11 @@ function Kanban({ active }) {
   const [pw, setPw] = useState(() => Number(lsGet('tem_w', 150)) || 150);
   const [ph, setPh] = useState(() => Number(lsGet('tem_h', 100)) || 100);
   const [rot, setRot] = useState(() => lsGet('tem_rot', '0') === '1');
-  const [perRow, setPerRow] = useState(() => Number(lsGet('tem_perrow', 2)) || 2);
+  const [perRow, setPerRow] = useState(() => { const n = Number(lsGet('tem_perrow_v2', 4)); return [2, 3, 4].includes(n) ? n : 4; });
   useEffect(() => {
     try {
       localStorage.setItem('tem_w', pw); localStorage.setItem('tem_h', ph);
-      localStorage.setItem('tem_rot', rot ? '1' : '0'); localStorage.setItem('tem_perrow', perRow);
+      localStorage.setItem('tem_rot', rot ? '1' : '0'); localStorage.setItem('tem_perrow_v2', perRow);
     } catch (e) {}
   }, [pw, ph, rot, perRow]);
 
@@ -929,6 +959,17 @@ function Kanban({ active }) {
       let data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', v).order('sheet_row'));
       if (!data.length) data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').ilike('col_a', `%${v}%`).order('sheet_row'));
       setRows(data);
+      // Lấy Số đơn hàng / Khách hàng / Ngày HT cho các LSX đang hiển thị
+      try {
+        const keys = Array.from(new Set(data.map(d => String(d.col_a || '').trim()).filter(Boolean)));
+        const m = {};
+        if (keys.length) {
+          const { data: p, error } = await supabase.from(TB_PKH).select('lsx, so_don_hang, khach_hang, ngay_hoan_thanh').in('lsx', keys);
+          if (error) throw error;
+          (p || []).forEach(x => { const k = normKey(x.lsx); if (!m[k]) m[k] = x; });
+        }
+        setPkh(m);
+      } catch (e2) { console.error('LSX_PKH:', e2); setPkh({}); }
     } catch (e) { alert('Lỗi tải dữ liệu: ' + e.message); }
     setLoading(false);
   };
@@ -945,7 +986,18 @@ function Kanban({ active }) {
     }));
     return Array.from(m.values()).sort((a, b) => b.count - a.count);
   }, [rows]);
-  const filtered = useMemo(() => stage ? rows.filter(r => firstOf(r).some(s => s.L === stage)) : rows, [rows, stage]);
+  // Danh sách STT người dùng nhập: "5,14,23,26" -> ['5','14','23','26']
+  const sttList = useMemo(() => sttInput.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean), [sttInput]);
+  const filtered = useMemo(() => {
+    // Có nhập STT -> chỉ hiện đúng các STT đó, theo thứ tự đã nhập (bỏ qua lọc công đoạn)
+    if (sttList.length) {
+      const order = new Map(); sttList.forEach((s, i) => { if (!order.has(s)) order.set(s, i); });
+      return rows
+        .filter(r => order.has(cell(r, 'B')))
+        .sort((a, b) => order.get(cell(a, 'B')) - order.get(cell(b, 'B')));
+    }
+    return stage ? rows.filter(r => firstOf(r).some(s => s.L === stage)) : rows;
+  }, [rows, stage, sttList]);
 
   const shown = showAll ? filtered : filtered.slice(0, page * PAGE);
 
@@ -971,30 +1023,30 @@ function Kanban({ active }) {
     <div className="kb-root">
       {/* ===== PHẦN CỐ ĐỊNH (không cuộn): thanh lệnh, khổ giấy, chọn công đoạn ===== */}
       <div className="kb-top no-print space-y-3 pb-3">
-        <div className="card p-3 flex flex-wrap items-center gap-3">
+
+              <div className="card p-3 flex flex-wrap items-center gap-3">
           <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
           <input list="lsx-kanban-list" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()}
-            placeholder="Nhập lệnh sản xuất rồi nhấn Enter…" className="inp" style={{ width: 280 }} />
+            placeholder="Nhập lệnh sản xuất rồi nhấn Enter…" className="inp" style={{ width: 260 }} />
           <datalist id="lsx-kanban-list">{lsxList.map(l => <option key={l} value={l} />)}</datalist>
           <button className="btn btn-primary" onClick={search}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
           <button className="btn" onClick={() => load(lsx)}><i className="fa-solid fa-rotate"></i> Làm mới</button>
-          <button className="btn ml-auto" onClick={() => setImportOpen(true)}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>
+
+          <span className="text-xs font-bold text-slate-500 ml-2">STT chi tiết</span>
+          <div className="relative">
+            <input value={sttInput} onChange={e => setSttInput(e.target.value)} placeholder="VD: 5,14,23,26" className="inp" style={{ width: 190, paddingRight: 28 }} />
+            {sttInput && (
+              <button onClick={() => setSttInput('')} title="Xoá lọc"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"><i className="fa-solid fa-xmark"></i></button>
+            )}
+          </div>
+          {sttList.length > 0 && <span className="text-xs text-slate-500">{filtered.length} / {sttList.length} STT tìm thấy</span>}
+
+          <button className="btn ml-auto" onClick={() => setCfgOpen(true)}><i className="fa-solid fa-sliders"></i> Cấu hình</button>
+          <button className="btn" onClick={() => setImportOpen(true)}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>
           <button className="btn btn-green" onClick={doPrint} disabled={!filtered.length} style={{ opacity: filtered.length ? 1 : .5 }}>
             <i className="fa-solid fa-print"></i> In tem ({filtered.length})
           </button>
-        </div>
-
-        <div className="card p-3 flex flex-wrap items-center gap-3 text-xs">
-          <span className="font-bold text-slate-500">Khổ giấy tem (mm)</span>
-          <input type="number" min="30" value={pw} onChange={e => setPw(Number(e.target.value) || 150)} className="inp" style={{ width: 72 }} />
-          <span>×</span>
-          <input type="number" min="30" value={ph} onChange={e => setPh(Number(e.target.value) || 100)} className="inp" style={{ width: 72 }} />
-          <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={rot} onChange={e => setRot(e.target.checked)} /> Xoay tem 90°</label>
-          <span className="font-bold text-slate-500 ml-4">Hiển thị</span>
-          {[1, 2, 3, 4].map(n => (
-            <button key={n} className={'pill ' + (perRow === n ? 'on' : '')} onClick={() => setPerRow(n)}>{n} tem/hàng</button>
-          ))}
-          <span className="text-gray-400">Khi in: mỗi tem 1 trang. Giấy ngang 150×100 → không xoay; giấy dọc 100×150 → tích “Xoay tem 90°”.</span>
         </div>
 
         {rows.length > 0 && (
@@ -1020,7 +1072,7 @@ function Kanban({ active }) {
           {shown.map((r, i) => (
             <div className="tem-page" key={r.id}>
               <span className="tem-no no-print" title="Số tờ in">{i + 1}</span>
-              <TemKanban r={r} />
+              <TemKanban r={r} pkh={pkh[normKey(cell(r, 'A'))]} />
             </div>
           ))}
         </div>
@@ -1031,6 +1083,37 @@ function Kanban({ active }) {
           </div>
         )}
       </div>
+
+            {cfgOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setCfgOpen(false)}>
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-4"><i className="fa-solid fa-sliders text-primary mr-2"></i>Cấu hình tem Kanban</h2>
+
+            <p className="text-xs font-bold text-slate-500 mb-2">Khổ giấy tem (mm)</p>
+            <div className="flex items-center gap-2 mb-2">
+              <input type="number" min="30" value={pw} onChange={e => setPw(Number(e.target.value) || 150)} className="inp" style={{ width: 90 }} />
+              <span>×</span>
+              <input type="number" min="30" value={ph} onChange={e => setPh(Number(e.target.value) || 100)} className="inp" style={{ width: 90 }} />
+              <button className="pill" onClick={() => { setPw(150); setPh(100); setRot(false); }}>150×100</button>
+            </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer mb-1">
+              <input type="checkbox" checked={rot} onChange={e => setRot(e.target.checked)} /> Xoay tem 90°
+            </label>
+            <p className="text-xs text-gray-400 mb-4">Giấy ngang 150×100 → không xoay; giấy dọc 100×150 → tích “Xoay tem 90°”. Khi in, mỗi tem 1 trang.</p>
+
+            <p className="text-xs font-bold text-slate-500 mb-2">Số tem hiển thị trên 1 hàng</p>
+            <div className="flex gap-2 mb-6">
+              {[2, 3, 4].map(n => (
+                <button key={n} className={'pill ' + (perRow === n ? 'on' : '')} onClick={() => setPerRow(n)}>{n} tem/hàng</button>
+              ))}
+            </div>
+
+            <div className="flex justify-end">
+              <button className="btn btn-primary" onClick={() => setCfgOpen(false)}>Xong</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {importOpen && <ImportKanbanModal onClose={() => setImportOpen(false)} onDone={() => { setVer(v => v + 1); load(lsx); }} />}
     </div>
