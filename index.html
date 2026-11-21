@@ -111,7 +111,7 @@ button, input, select, textarea { font-family: inherit; }
                     white-space:normal; overflow:hidden; overflow-wrap:anywhere; word-break:break-word; }  /* chữ dài tự xuống dòng, không đè ô bên cạnh */
   table.erp.dm td.sl   { font-size:46px; font-weight:800; }
   table.erp.dm td.bold { font-weight:800; }
-  table.erp.dm td.note { font-size:22px; font-weight:400; }
+  table.erp.dm td.note { font-size:25px; font-weight:400; }
   table.erp.dm thead th { position:static; font-size:32px; line-height:1.15; white-space:normal; }   /* tên cột size 32 */
   .col-rs { position:absolute; top:-100px; bottom:0; right:-12px; width:24px; cursor:col-resize; z-index:30; }
   .col-rs:hover, .col-rs:active { background:rgba(37,99,235,.45); }
@@ -154,6 +154,29 @@ button, input, select, textarea { font-family: inherit; }
   .dlg-warn { margin-top:14px; background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; border-radius:10px; padding:8px 12px; font-size:12px; font-weight:600; }
   .dlg-act { display:flex; gap:10px; justify-content:center; margin-top:22px; }
   .dlg-act .btn { min-width:120px; justify-content:center; padding:10px 16px; font-size:13px; }
+
+  .dlg-opt { display:flex; gap:12px; align-items:flex-start; padding:10px 12px; border:1.5px solid #e2e8f0; border-radius:12px; cursor:pointer; transition:.12s; }
+  .dlg-opt:hover { border-color:#93c5fd; background:#f8fbff; }
+  .dlg-opt.on { border-color:#dc2626; background:#fef2f2; }
+  .dlg-opt b { display:block; font-size:13px; color:#0f172a; }
+  .dlg-opt small { display:block; font-size:11.5px; color:#64748b; margin-top:2px; line-height:1.35; }
+  .dlg-radio { flex:0 0 auto; width:18px; height:18px; border-radius:50%; border:2px solid #cbd5e1; margin-top:2px; position:relative; }
+  .dlg-opt.on .dlg-radio { border-color:#dc2626; }
+  .dlg-opt.on .dlg-radio::after { content:''; position:absolute; inset:3px; border-radius:50%; background:#dc2626; }
+
+    .col-flt { position:absolute; left:4px; top:50%; transform:translateY(-50%); width:34px; height:34px; border:0; border-radius:5px;
+             background:rgba(255,255,255,.75); color:#475569; font-size:20px; line-height:34px; padding:0; cursor:pointer; z-index:20; }
+  .col-flt:hover { background:#fff; color:#1d4ed8; }
+  .col-flt.on { background:#2563eb; color:#fff; }
+  .flt-pop { position:fixed; width:270px; background:#fff; border:1px solid #cbd5e1; border-radius:12px; box-shadow:0 12px 32px rgba(15,23,42,.25);
+             padding:10px; display:flex; flex-direction:column; gap:8px; font-size:13px; }
+  .flt-it { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:6px; text-align:left; font-weight:600; color:#1e3a5f; background:none; border:0; cursor:pointer; }
+  .flt-it:hover { background:#eef5fc; }
+  .flt-list { max-height:230px; overflow:auto; border:1px solid #e2e8f0; border-radius:8px; padding:4px 6px; }
+  .flt-row { display:flex; align-items:center; gap:8px; padding:3px 2px; cursor:pointer; font-size:12.5px; }
+  .flt-row span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .flt-row em { font-style:normal; color:#94a3b8; font-size:11px; }
+  .flt-act { display:flex; justify-content:flex-end; gap:8px; }
 
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
@@ -638,7 +661,51 @@ const DM_W = [110, 260, 340, 170, 130, 130, 120, 130, 100, 100, 110, 140,       
               170, 170, 170, 170, 170, 170, 170, 170, 170, 170,                   // NC1 … NC10
               130, 130, 220];                                                     // Bên giao, Bên nhận, Ghi chú
 const DM_TOTAL = DM_W.reduce((a, b) => a + b, 0);
-const DM_PRINT_W = 1050;   // vùng in A4 ngang: (297mm - 2×8mm lề) ≈ 1062px, chừa dư 1 chút
+const DM_PRINT_W = 1050;
+// Giá trị của từng cột 1..25 (dùng cho bộ lọc kiểu Excel); sm = bản đồ công đoạn NC1..NC10 của dòng
+const DM_GET = [
+  (r, i) => cell(r, 'B') || String(i + 1), r => cell(r, 'Q'), r => cell(r, 'R'), r => cell(r, 'U'),
+  r => cell(r, 'AB'), r => cell(r, 'AC'), r => cell(r, 'AD'), r => cell(r, 'AE'), r => cell(r, 'AF'), r => cell(r, 'AG'), r => cell(r, 'AI'), r => cell(r, 'AJ'),
+  ...Array.from({ length: 10 }, (_, k) => (r, i, sm) => sm[k + 1] || ''),
+  () => '', () => '', r => cell(r, 'EZ'),
+];   // vùng in A4 ngang: (297mm - 2×8mm lề) ≈ 1062px, chừa dư 1 chút
+
+function ColFilterPop({ pop, view, cur, onApply, onSort, onClose }) {
+  const c = pop.c;
+  const all = useMemo(() => {
+    const m = new Map();
+    view.forEach(x => m.set(x.v[c], (m.get(x.v[c]) || 0) + 1));
+    return Array.from(m.entries()).sort((a, b) => String(a[0]).localeCompare(String(b[0]), 'vi', { numeric: true }));
+  }, [view, c]);
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(() => cur ? new Set(cur) : new Set(all.map(e => e[0])));
+  const lab = (v) => v === '' ? '(Trống)' : String(v);
+  const list = all.filter(([v]) => lab(v).toLowerCase().includes(q.trim().toLowerCase()));
+  const allOn = list.length > 0 && list.every(([v]) => sel.has(v));
+  const toggle = (v) => setSel(p => { const n = new Set(p); if (n.has(v)) n.delete(v); else n.add(v); return n; });
+  const toggleAll = () => setSel(p => { const n = new Set(p); list.forEach(([v]) => { if (allOn) n.delete(v); else n.add(v); }); return n; });
+  const left = Math.max(8, Math.min(pop.x, window.innerWidth - 290));
+  return (
+    <div className="no-print" style={{ position: 'fixed', inset: 0, zIndex: 90 }} onMouseDown={onClose}>
+      <div className="flt-pop" style={{ left, top: pop.y }} onMouseDown={e => e.stopPropagation()}>
+        <button className="flt-it" onClick={() => onSort(c, 1)}><i className="fa-solid fa-arrow-down-a-z"></i> Sắp xếp A → Z</button>
+        <button className="flt-it" onClick={() => onSort(c, -1)}><i className="fa-solid fa-arrow-down-z-a"></i> Sắp xếp Z → A</button>
+        <input className="inp" placeholder="Tìm giá trị…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
+        <div className="flt-list">
+          <label className="flt-row"><input type="checkbox" checked={allOn} onChange={toggleAll} /> <b>(Chọn tất cả{q ? ' kết quả' : ''})</b></label>
+          {list.slice(0, 500).map(([v, n]) => (
+            <label key={String(v)} className="flt-row"><input type="checkbox" checked={sel.has(v)} onChange={() => toggle(v)} /><span>{lab(v)}</span><em>{n}</em></label>
+          ))}
+          {list.length > 500 && <p className="text-xs text-gray-400 p-1">… còn {list.length - 500} giá trị, hãy gõ để tìm.</p>}
+        </div>
+        <div className="flt-act">
+          <button className="btn" onClick={() => { onApply(c, null); onClose(); }}>Xoá lọc</button>
+          <button className="btn btn-primary" disabled={!sel.size} onClick={() => { onApply(c, sel.size >= all.length ? null : sel); onClose(); }}>OK</button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function InDonHang() {
   const lsxList = useLsxList();
@@ -694,6 +761,7 @@ function InDonHang() {
       const data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').ilike('col_a', `%${v}%`).order('sheet_row'));
       setRows(data);
       setLsxShown(data.length ? data[0].col_a : v);
+      setFlt({}); setSrt(null);
     } catch (e) { alert('Lỗi tìm kiếm: ' + e.message); }
     setLoading(false);
   };
@@ -702,10 +770,22 @@ function InDonHang() {
   const TOTAL_COLS = 12 + NC + 3;
   let colNo = 0; const no = () => ++colNo;
 
+  // ---- Bộ lọc kiểu Excel ở hàng số 1…25 ----
+  const [flt, setFlt] = useState({});            // { chỉ số cột: Set giá trị được giữ lại }
+  const [srt, setSrt] = useState(null);          // { c, dir }
+  const [pop, setPop] = useState(null);          // { c, x, y }
+  const view = useMemo(() => rows.map((r, i) => { const sm = getStepMap(r); return { r, i, sm, v: DM_GET.map(f => f(r, i, sm)) }; }), [rows]);
+  const shownRows = useMemo(() => {
+    let a = view.filter(x => Object.keys(flt).every(c => flt[c].has(x.v[c])));
+    if (srt) a = a.slice().sort((p, q) => srt.dir * String(p.v[srt.c]).localeCompare(String(q.v[srt.c]), 'vi', { numeric: true }));
+    return a;
+  }, [view, flt, srt]);
+  const applyFlt = (c, s) => setFlt(p => { const n = { ...p }; if (s) n[c] = s; else delete n[c]; return n; });
+
   return (
     <div className="space-y-3">
       {/* Thanh công cụ (không in) */}
-      <div className="no-print card p-3 flex flex-wrap items-center gap-3">
+      <div className="no-print card p-3 flex flex-wrap items-center gap-3" style={{ position: 'sticky', top: 0, zIndex: 40, boxShadow: '0 4px 12px rgba(15,23,42,.08)' }}>
         <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
         <input list="lsx-datalist" value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && search()} placeholder="Nhập mã lệnh sản xuất…" className="inp" style={{ width: 240 }} />
@@ -723,7 +803,7 @@ function InDonHang() {
       {!loading && searched && rows.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không tìm thấy lệnh sản xuất “{input}”.</div>}
       {!loading && !searched && <div className="no-print card p-6 text-center text-gray-400">Nhập mã lệnh sản xuất rồi bấm Tìm kiếm (hoặc nhấn Enter).</div>}
 
-      {rows.length > 0 && !loading && (
+      {(
         <div className="print-sheet card p-2" ref={boxRef} style={{ overflowX: frozen ? 'auto' : 'hidden' }}>
           <div className="dm-zoom" style={{ '--zs': zs, '--zp': zp }}>
           <table className="erp dm" style={{ width: dmTotal, tableLayout: 'fixed' }}>
@@ -758,6 +838,11 @@ function InDonHang() {
                 {Array.from({ length: TOTAL_COLS }, (_, i) => (
                   <th key={i} style={{ background: '#cdf5fb', color: '#000', border: '1px solid #000', padding: '3px 4px', position: 'relative' }}>
                     {no()}
+                    <button className={'col-flt no-print' + (flt[i] ? ' on' : '')} title="Lọc / sắp xếp"
+                      onMouseDown={e => e.stopPropagation()}
+                      onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setPop({ c: i, x: b.left, y: b.bottom + 4 }); }}>
+                      <i className="fa-solid fa-filter"></i>
+                    </button>
                     <span className="col-rs no-print" title="Kéo để chỉnh độ rộng · nhấp đúp để đặt lại cột này"
                       onMouseDown={e => startResize(e, i)}
                       onDoubleClick={() => setColW(p => { const a = p.slice(); a[i] = DM_W[i]; return a; })} />
@@ -766,8 +851,10 @@ function InDonHang() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, idx) => {
-                const stepMap = getStepMap(r);
+              {shownRows.length === 0 && Array.from({ length: 12 }, (_, k) => (
+                <tr key={'blank' + k}>{Array.from({ length: TOTAL_COLS }, (_, j) => <td key={j} style={{ border: '1px solid #000', height: 60 }}>{'\u00a0'}</td>)}</tr>
+              ))}
+              {shownRows.map(({ r, i: idx, sm: stepMap }) => {
                 const bd = { border: '1px solid #000' };
                 return (
                   <tr key={r.id}>
@@ -797,6 +884,8 @@ function InDonHang() {
           </div>
         </div>
       )}
+            {pop && <ColFilterPop pop={pop} view={view} cur={flt[pop.c]} onApply={applyFlt}
+                onSort={(c, d) => { setSrt({ c, dir: d }); setPop(null); }} onClose={() => setPop(null)} />}
     </div>
   );
 }
@@ -1178,7 +1267,6 @@ function Kanban({ active }) {
           {sttList.length > 0 && <span className="text-xs text-slate-500">{filtered.length} / {sttList.length} STT tìm thấy</span>}
 
           <button className="btn ml-auto" onClick={() => setCfgOpen(true)}><i className="fa-solid fa-sliders"></i> Cấu hình</button>
-          <button className="btn" onClick={() => setImportOpen(true)}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>
           <button className="btn" onClick={selectAll} disabled={!filtered.length}><i className="fa-solid fa-square-check"></i> Chọn tất cả</button>
           <button className="btn" onClick={() => setSelIds(new Set())} disabled={!selIds.size} style={{ opacity: selIds.size ? 1 : .5 }}>
             <i className="fa-solid fa-xmark"></i> Bỏ chọn ({selIds.size})
@@ -1293,6 +1381,20 @@ const BK_LEFT = []; (() => { let x = BK_RNW; BK_COLW.forEach(w => { BK_LEFT.push
 const BK_TOTALW = BK_RNW + BK_COLW.reduce((a, b) => a + b, 0);
 const blankRow = () => new Array(BK_N).fill('');
 const newBkStore = () => ({ data: [], orig: null, ids: [], nums: [], sel: new Set(), dirty: new Set(), undo: [], loaded: '' });
+
+// ---- Kết nối Google Apps Script (xoá / ghi Sheet) ----
+const GS_URL = "DÁN-LINK-/exec-VÀO-ĐÂY";
+const GS_TOKEN = "DOI-TOKEN-WEB-O-DAY";          // phải GIỐNG CFG.WEB_TOKEN trong Apps Script
+async function gs(action, payload) {
+  const res = await fetch(GS_URL, { method: 'POST', body: JSON.stringify({ token: GS_TOKEN, action, ...payload }) });
+  let j; try { j = await res.json(); } catch (e) { throw new Error('Không đọc được phản hồi từ Apps Script (kiểm tra link /exec và quyền "Bất kỳ ai")'); }
+  if (!j.ok) throw new Error(j.error || 'Apps Script báo lỗi');
+  return j;
+}
+// Khoá LSX-STT (phải giống bk_make_key bên SQL)
+const bkTrim = (s) => String(s == null ? '' : s).replace(/^[ \t\r\n\u00a0]+|[ \t\r\n\u00a0]+$/g, '');
+const bkKey = (row, sr) => bkTrim(row[1]) === '' ? bkTrim(row[0]) + '-r' + sr : bkTrim(row[0]) + '-' + bkTrim(row[1]);
+const diffCols = (o, n) => { const a = []; for (let i = 0; i < BK_N; i++) if (o[i] !== n[i]) a.push(i); return a; };
 
 // Đọc dữ liệu dán từ Excel / Google Sheet (tab = sang ô, xuống dòng = sang hàng, hỗ trợ ô có "" và xuống dòng)
 function parseTSV(text) {
@@ -1562,8 +1664,9 @@ function BomKanban() {
 
   // ----- Hộp thoại xác nhận (thay cho confirm() của trình duyệt) -----
   const [dlg, setDlg] = useState(null);
-  const ask = (o) => new Promise(res => setDlg({ ...o, res }));
-  const closeDlg = (v) => { if (dlg) dlg.res(v); setDlg(null); };
+  const [pick, setPick] = useState('');
+  const ask = (o) => new Promise(res => { setPick(o.def || ''); setDlg({ ...o, res }); });
+  const closeDlg = (v) => { if (dlg) dlg.res(v && dlg.options ? pick : v); setDlg(null); };
   useEffect(() => {
     if (!dlg) return;
     const h = (e) => { if (e.key === 'Escape') closeDlg(false); };
@@ -1587,73 +1690,134 @@ function BomKanban() {
     setLoading(false);
   };
 
-  // ----- Lưu các dòng đã sửa -----
+    // ----- Lưu các dòng đã sửa: Supabase trước, rồi sang Google Sheet (chỉ các ô đã đổi) -----
   const saveEdit = async () => {
     const idx = Array.from(E.dirty).sort((a, b) => a - b); if (!idx.length) return;
-    if (!(await ask({ icon: 'fa-floppy-disk', title: 'Lưu thay đổi',
-      message: 'Cập nhật các dòng đã sửa vào Supabase.', chips: ['LSX: ' + E.loaded, idx.length + ' dòng'], confirmText: 'Lưu' }))) return;
-    setBusy('Đang lưu…'); setMsg(null);
+    const yes = await ask({ icon: 'fa-floppy-disk', title: 'Lưu thay đổi',
+      message: 'Dữ liệu được lưu vào Supabase trước, sau đó đồng bộ sang Google Sheet (chỉ ghi các ô đã sửa).',
+      chips: ['LSX: ' + E.loaded, idx.length + ' dòng'], confirmText: 'Lưu & đồng bộ' });
+    if (!yes) return;
+    setMsg(null);
     try {
       let done = 0;
       for (let s = 0; s < idx.length; s += 200) {
-        const part = idx.slice(s, s + 200).map(r => [E.ids[r]].concat(E.data[r]));
-        const { data, error } = await supabase.rpc('bk_update_rows', { p_rows: part });
-        if (error) throw error;
-        done += data.updated; setBusy('Đang lưu… ' + Math.min(s + 200, idx.length) + '/' + idx.length);
+        setBusy('Đang lưu Supabase… ' + Math.min(s + 200, idx.length) + '/' + idx.length);
+        const part = idx.slice(s, s + 200).map(r => [E.ids[r], E.nums[r]].concat(E.data[r]));
+        const { data, error } = await supabase.rpc('bkx_save', { p_rows: part });
+        if (error) throw new Error(/lsx_key|duplicate/i.test(error.message) ? 'Trùng khoá LSX-STT với một dòng khác — hãy đổi lại LSX/STT.' : error.message);
+        done += data.updated;
+      }
+      try {
+        for (let s = 0; s < idx.length; s += 200) {
+          setBusy('Đang đồng bộ sang Google Sheet… ' + Math.min(s + 200, idx.length) + '/' + idx.length);
+          await gs('upsert', { items: idx.slice(s, s + 200).map(r => ({
+            key: bkKey(E.data[r], E.nums[r]), oldKey: bkKey(E.orig[r], E.nums[r]),
+            values: E.data[r], cols: diffCols(E.orig[r], E.data[r]) })) });
+        }
+      } catch (e) {
+        bad('Đã lưu Supabase nhưng CHƯA ghi sang Google Sheet: ' + (e.message || e) + '. Hãy bấm "Lưu thay đổi" lần nữa để thử lại — nếu bỏ qua, lần đồng bộ Sheet→Supabase sau có thể ghi đè lại chỉnh sửa này.');
+        setBusy(''); re(); return;
       }
       idx.forEach(r => { E.orig[r] = E.data[r]; }); E.dirty.clear();
-      if (done < idx.length) bad('Đã lưu ' + done + '/' + idx.length + ' dòng. Số còn lại không tìm thấy (có thể vừa được đồng bộ lại từ Google Sheet) — hãy bấm Tìm lại.');
-      else ok('✔ Đã lưu ' + done + ' dòng vào Supabase.');
+      if (done < idx.length) bad('Đã lưu ' + done + '/' + idx.length + ' dòng trên Supabase. Số còn lại không tìm thấy (có thể vừa được đồng bộ lại) — hãy bấm Tìm lại.');
+      else ok('✔ Đã lưu ' + done + ' dòng vào Supabase và đồng bộ sang Google Sheet.');
+      window.dispatchEvent(new Event('bk-changed'));
     } catch (e) { bad('Lưu thất bại: ' + (e.message || e)); }
     setBusy(''); re();
   };
 
-  // ----- Xoá các dòng đang chọn (đỏ nhạt) khỏi Supabase -----
+  // ----- Xoá các dòng đang chọn: chọn nơi xoá (Supabase / Sheet / cả hai) -----
   const deleteSel = async () => {
     const idx = Array.from(E.sel).sort((a, b) => a - b); if (!idx.length) return;
-    if (!(await ask({ danger: true, icon: 'fa-trash-can', title: 'Xác nhận xoá BOM',
-      message: 'Bạn sắp xoá các dòng BOM đã chọn khỏi Supabase.',
-      chips: ['LSX: ' + E.loaded, idx.length + ' dòng'],
-      warn: 'Thao tác này không thể hoàn tác.', confirmText: 'Xoá vĩnh viễn' }))) return;
-    setBusy('Đang xoá…'); setMsg(null);
+    const target = await ask({ danger: true, icon: 'fa-trash-can', title: 'Xác nhận xoá BOM',
+      message: 'Chọn nơi cần xoá các dòng BOM đã chọn:',
+      chips: ['LSX: ' + E.loaded, idx.length + ' dòng'], def: 'both',
+      options: [
+        { v: 'both', label: 'Xoá cả Supabase và Google Sheet', desc: 'Khuyên dùng — dữ liệu hai nơi luôn khớp nhau.' },
+        { v: 'sb', label: 'Chỉ xoá trên Supabase', desc: 'Dòng vẫn còn trên Sheet nên lần đồng bộ sau sẽ được nạp lại.' },
+        { v: 'gs', label: 'Chỉ xoá trên Google Sheet', desc: 'Lần đồng bộ sau sẽ xoá nốt các dòng này trên Supabase.' } ],
+      warn: 'Thao tác này không thể hoàn tác.', confirmText: 'Xác nhận xoá' });
+    if (!target) return;
+    setMsg(null);
     try {
-      for (let s = 0; s < idx.length; s += 500) {
-        const { error } = await supabase.rpc('bk_delete_ids', { p_ids: idx.slice(s, s + 500).map(r => E.ids[r]) });
-        if (error) throw error;
+      let gsN = 0;
+      if (target !== 'sb') {                                   // Sheet trước: nếu Supabase lỗi thì lần đồng bộ sau tự dọn tiếp
+        setBusy('Đang xoá trên Google Sheet…');
+        const keys = idx.map(r => bkKey(E.orig[r], E.nums[r]));
+        for (let s = 0; s < keys.length; s += 5000) gsN += (await gs('delete', { keys: keys.slice(s, s + 5000) })).deleted;
       }
-      const keep = E.data.map((_, i) => i).filter(i => !E.sel.has(i));
-      const oldDirty = E.dirty;
-      E.data = keep.map(i => E.data[i]); E.orig = keep.map(i => E.orig[i]);
-      E.ids = keep.map(i => E.ids[i]); E.nums = keep.map(i => E.nums[i]);
-      E.dirty = new Set(); keep.forEach((o, nI) => { if (oldDirty.has(o)) E.dirty.add(nI); });
+      if (target !== 'gs') {
+        setBusy('Đang xoá trên Supabase…');
+        for (let s = 0; s < idx.length; s += 500) {
+          const { error } = await supabase.rpc('bkx_remove', { p_ids: idx.slice(s, s + 500).map(r => E.ids[r]) });
+          if (error) throw error;
+        }
+        const keep = E.data.map((_, i) => i).filter(i => !E.sel.has(i));
+        const oldDirty = E.dirty;
+        E.data = keep.map(i => E.data[i]); E.orig = keep.map(i => E.orig[i]);
+        E.ids = keep.map(i => E.ids[i]); E.nums = keep.map(i => E.nums[i]);
+        E.dirty = new Set(); keep.forEach((o, nI) => { if (oldDirty.has(o)) E.dirty.add(nI); });
+      }
       E.sel = new Set(); E.undo = [];
-      ok('✔ Đã xoá ' + idx.length + ' dòng.'); setGk(k => k + 1);
+      ok('✔ Đã xoá ' + idx.length + ' dòng' + (target === 'both' ? ' trên Supabase và ' + gsN + ' dòng trên Google Sheet.' : target === 'sb' ? ' trên Supabase.' : ' — Google Sheet: ' + gsN + ' dòng.'));
+      window.dispatchEvent(new Event('bk-changed'));
+      setGk(k => k + 1);
     } catch (e) { bad('Xoá thất bại: ' + (e.message || e)); }
     setBusy(''); re();
   };
 
-  // ----- Import: lưu các dòng đã dán -----
+  // ----- Import: ghi Supabase trước, rồi đồng bộ xuống Google Sheet -----
   const importFilled = () => I.data.map((r, i) => ({ r, i })).filter(x => x.r.some(v => String(v).trim() !== ''));
   const saveImport = async () => {
     const rows = importFilled();
     if (!rows.length) return alert('Chưa có dữ liệu để lưu.');
-    const miss = rows.filter(x => !String(x.r[0]).trim());
-    if (miss.length) return alert('Có ' + miss.length + ' dòng thiếu Lệnh sản xuất (cột A), ví dụ dòng ' + miss.slice(0, 5).map(x => x.i + 1).join(', ') + '. Hãy điền hoặc xoá các dòng này.');
-    if (!(await ask({ icon: 'fa-file-import', title: 'Thêm dòng mới',
-      message: 'Thêm các dòng vừa dán vào Supabase.', chips: [rows.length + ' dòng'], confirmText: 'Thêm vào' }))) return;
-    setBusy('Đang lưu…'); setMsg(null);
+    const miss = rows.filter(x => !bkTrim(x.r[0]) || !bkTrim(x.r[1]));
+    if (miss.length) return alert('Có ' + miss.length + ' dòng thiếu Lệnh sản xuất (cột A) hoặc STT (cột B), ví dụ dòng ' + miss.slice(0, 5).map(x => x.i + 1).join(', ') + '. Hãy điền hoặc xoá các dòng này.');
+    const lastIdx = new Map(); rows.forEach((x, k) => lastIdx.set(bkKey(x.r, 0), k));
+    const uniq = rows.filter((x, k) => lastIdx.get(bkKey(x.r, 0)) === k);        // trùng khoá LSX-STT: giữ dòng sau cùng
+    const dup = rows.length - uniq.length;
+    const yes = await ask({ icon: 'fa-file-import', title: 'Thêm dòng mới',
+      message: 'Dữ liệu được ghi vào Supabase trước, sau đó đồng bộ xuống Google Sheet.',
+      chips: [uniq.length + ' dòng'].concat(dup ? [dup + ' dòng trùng khoá LSX-STT (giữ dòng sau cùng)'] : []), confirmText: 'Lưu & đồng bộ' });
+    if (!yes) return;
+    setMsg(null);
     try {
-      for (let s = 0; s < rows.length; s += 200) {
-        const { error } = await supabase.rpc('bk_insert_rows', { p_rows: rows.slice(s, s + 200).map(x => x.r) });
+      for (let s = 0; s < uniq.length; s += 200) {
+        setBusy('Đang ghi Supabase… ' + Math.min(s + 200, uniq.length) + '/' + uniq.length);
+        const { error } = await supabase.rpc('bkx_save', { p_rows: uniq.slice(s, s + 200).map(x => [null, null].concat(x.r.map(String))) });
         if (error) throw error;
-        setBusy('Đang lưu… ' + Math.min(s + 200, rows.length) + '/' + rows.length);
       }
-      const firstLsx = String(rows[0].r[0]).trim();
-      I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = [];
-      ok('✔ Đã thêm ' + rows.length + ' dòng vào Supabase.');
-      setMode('edit'); setInput(firstLsx); setGk(k => k + 1); setBusy('');
-      E.dirty = new Set(); search(firstLsx); return;
-    } catch (e) { bad('Lưu thất bại: ' + (e.message || e)); }
+    } catch (e) { bad('Lưu Supabase thất bại: ' + (e.message || e)); setBusy(''); return; }
+    try {
+      for (let s = 0; s < uniq.length; s += 400) {
+        setBusy('Đang đồng bộ xuống Google Sheet… ' + Math.min(s + 400, uniq.length) + '/' + uniq.length);
+        await gs('upsert', { items: uniq.slice(s, s + 400).map(x => ({ key: bkKey(x.r, 0), values: x.r.map(String), cols: null })) });
+      }
+    } catch (e) {
+      bad('Đã ghi Supabase nhưng GHI SHEET LỖI: ' + (e.message || e) + '. Dữ liệu vẫn còn trong bảng — hãy bấm Lưu lần nữa để thử lại (nếu bỏ qua, lần đồng bộ Sheet→Supabase sau sẽ xoá các dòng này khỏi Supabase).');
+      setBusy(''); return;
+    }
+    const firstLsx = String(rows[0].r[0]).trim();
+    I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = [];
+    ok('✔ Đã thêm ' + uniq.length + ' dòng vào Supabase và Google Sheet.');
+    window.dispatchEvent(new Event('bk-changed'));
+    setMode('edit'); setInput(firstLsx); setGk(k => k + 1); setBusy('');
+    E.dirty = new Set(); search(firstLsx);
+  };
+
+  // ----- Đưa 5 dòng cuối cùng trong Supabase lên bảng Import -----
+  const loadLast5 = async () => {
+    if (importFilled().length && !(await ask({ icon: 'fa-clock-rotate-left', title: 'Thay nội dung bảng?',
+      message: 'Bảng đang có dữ liệu chưa lưu. Đưa 5 dòng cuối lên sẽ thay thế toàn bộ nội dung này.', confirmText: 'Thay thế' }))) return;
+    setBusy('Đang tải 5 dòng cuối…'); setMsg(null);
+    try {
+      const { data, error } = await supabase.from(TB_KANBAN).select('*')
+        .order('sheet_row', { ascending: false, nullsFirst: true }).order('id', { ascending: false }).limit(5);
+      if (error) throw error;
+      const arr = data.reverse().map(d => BK_LETTERS.map(L => { const x = d['col_' + L.toLowerCase()]; return x == null ? '' : String(x); }));
+      I.data = arr.concat(Array.from({ length: 25 }, blankRow)); I.sel = new Set(); I.undo = [];
+      setGk(k => k + 1); ok('✔ Đã đưa ' + arr.length + ' dòng cuối cùng của Supabase lên bảng.');
+    } catch (e) { bad('Không tải được: ' + (e.message || e)); }
     setBusy('');
   };
   const addRows = () => { for (let k = 0; k < 100; k++) I.data.push(blankRow()); re(); };
@@ -1679,7 +1843,8 @@ function BomKanban() {
             <button className="btn" onClick={() => setMode('edit')}><i className="fa-solid fa-arrow-left"></i> Quay lại</button>
             <span className="font-bold text-slate-700 text-sm">Import BOM Kanban</span>
             <span className="text-xs text-slate-500">{importFilled().length} dòng có dữ liệu · {I.sel.size} dòng đang chọn</span>
-            <button className="btn ml-auto" onClick={addRows}><i className="fa-solid fa-plus"></i> Thêm 100 dòng</button>
+            <button className="btn ml-auto" onClick={loadLast5} {...dis(false)}><i className="fa-solid fa-clock-rotate-left"></i> 5 dòng cuối</button>
+            <button className="btn" onClick={addRows}><i className="fa-solid fa-plus"></i> Thêm 100 dòng</button>
             <button className="btn" onClick={delLocal} {...dis(!I.sel.size)}><i className="fa-solid fa-eraser"></i> Bỏ dòng đã chọn</button>
             <button className="btn" onClick={clearImport}>Xoá hết</button>
             <button className="btn btn-green" onClick={saveImport} {...dis(!importFilled().length)}><i className="fa-solid fa-floppy-disk"></i> Lưu vào Supabase</button>
@@ -1711,6 +1876,16 @@ function BomKanban() {
             <h3 className="dlg-title">{dlg.title}</h3>
             <p className="dlg-msg">{dlg.message}</p>
             {dlg.chips && <div className="dlg-chips">{dlg.chips.map((c, i) => <span key={i} className="dlg-chip">{c}</span>)}</div>}
+            {dlg.options && (
+              <div style={{ marginTop: 16, textAlign: 'left', display: 'grid', gap: 8 }}>
+                {dlg.options.map(o => (
+                  <div key={o.v} className={'dlg-opt' + (pick === o.v ? ' on' : '')} onClick={() => setPick(o.v)}>
+                    <span className="dlg-radio"></span>
+                    <span><b>{o.label}</b><small>{o.desc}</small></span>
+                  </div>
+                ))}
+              </div>
+            )}
             {dlg.warn && <div className="dlg-warn"><i className="fa-solid fa-triangle-exclamation"></i> {dlg.warn}</div>}
             <div className="dlg-act">
               <button className="btn" onClick={() => closeDlg(false)}>Hủy</button>
@@ -1845,11 +2020,20 @@ function MainApp() {
   useEffect(() => { try { localStorage.setItem('sb_collapsed', collapsed ? '1' : '0'); } catch (e) {} }, [collapsed]);
 
   useEffect(() => {
-    (async () => {
-      const a = await supabase.from(TB_BOM).select('*', { count: 'exact', head: true });
-      const b = await supabase.from(TB_KANBAN).select('*', { count: 'exact', head: true });
-      setCounts({ tracuu: a.count, kanban: b.count });
-    })();
+    let alive = true;
+    const refresh = async () => {
+      if (document.hidden) return;
+      try {
+        const a = await supabase.from(TB_BOM).select('*', { count: 'exact', head: true });
+        const b = await supabase.from(TB_KANBAN).select('*', { count: 'exact', head: true });
+        if (alive) setCounts({ tracuu: a.count, kanban: b.count });
+      } catch (e) {}
+    };
+    refresh();
+    const t = setInterval(refresh, 15000);
+    window.addEventListener('bk-changed', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { alive = false; clearInterval(t); window.removeEventListener('bk-changed', refresh); document.removeEventListener('visibilitychange', refresh); };
   }, []);
 
   return (
