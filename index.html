@@ -1650,7 +1650,7 @@ function SheetGrid({ store, onChange, canAdd }) {
 }
 
 function BomKanban() {
-  const [mode, setMode] = useState('edit');            // 'edit' = tìm & sửa · 'import' = dán dữ liệu mới
+  const [mode, setMode] = useState('import');          // 'import' = Up Bom (mở trước) · 'edit' = Sửa Bom
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState('');
@@ -1677,7 +1677,8 @@ function BomKanban() {
   // ----- Tìm LSX -----
   const search = async (val) => {
     const v = (typeof val === 'string' ? val : input).trim(); if (!v) return;
-    if (E.dirty.size && !confirm('Đang có ' + E.dirty.size + ' dòng sửa chưa lưu, sẽ mất nếu tìm lại. Tiếp tục?')) return;
+    if (E.dirty.size && !(await ask({ danger: true, icon: 'fa-triangle-exclamation', title: 'Bỏ thay đổi chưa lưu?',
+      message: 'Tìm lại sẽ làm mất các chỉnh sửa chưa lưu.', chips: [E.dirty.size + ' dòng đã sửa'], confirmText: 'Bỏ & tìm lại' }))) return;
     setLoading(true); setMsg(null);
     try {
       let data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', v).order('sheet_row'));
@@ -1726,50 +1727,45 @@ function BomKanban() {
     setBusy(''); re();
   };
 
-  // ----- Xoá các dòng đang chọn: chọn nơi xoá (Supabase / Sheet / cả hai) -----
+    // ----- Xoá các dòng đang chọn: xoá ĐỒNG THỜI trên Google Sheet và Supabase -----
   const deleteSel = async () => {
     const idx = Array.from(E.sel).sort((a, b) => a - b); if (!idx.length) return;
-    const target = await ask({ danger: true, icon: 'fa-trash-can', title: 'Xác nhận xoá BOM',
-      message: 'Chọn nơi cần xoá các dòng BOM đã chọn:',
-      chips: ['LSX: ' + E.loaded, idx.length + ' dòng'], def: 'both',
-      options: [
-        { v: 'both', label: 'Xoá cả Supabase và Google Sheet', desc: 'Khuyên dùng — dữ liệu hai nơi luôn khớp nhau.' },
-        { v: 'sb', label: 'Chỉ xoá trên Supabase', desc: 'Dòng vẫn nằm trên Sheet (không còn đồng bộ ngược nên sẽ không quay lại).' },
-        { v: 'gs', label: 'Chỉ xoá trên Google Sheet', desc: 'Supabase vẫn giữ dòng (tem Kanban vẫn in được), không còn gắn với dòng nào trên Sheet.' } ],
+    const yes = await ask({ danger: true, icon: 'fa-trash-can', title: 'Xác nhận xoá BOM',
+      message: 'Các dòng BOM đã chọn sẽ được xoá khỏi Supabase và Google Sheet.',
+      chips: ['LSX: ' + E.loaded, idx.length + ' dòng'],
       warn: 'Thao tác này không thể hoàn tác.', confirmText: 'Xác nhận xoá' });
-    if (!target) return;
+    if (!yes) return;
     setMsg(null);
+    let gsN = 0, sheetDone = false;
     try {
-      let gsN = 0;
-      if (target !== 'sb') {                                   // Sheet trước: nếu Supabase lỗi thì lần đồng bộ sau tự dọn tiếp
-        setBusy('Đang xoá trên Google Sheet…');
-        gsN = (await gs('delete', { items: idx.map(r => ({ key: bkKey(E.orig[r], E.nums[r]), row: E.nums[r] })) })).deleted;
+      setBusy('Đang xoá trên Google Sheet…');                    // Sheet trước: nếu Supabase lỗi thì bấm xoá lại vẫn an toàn
+      gsN = (await gs('delete', { items: idx.map(r => ({ key: bkKey(E.orig[r], E.nums[r]), row: E.nums[r] })) })).deleted;
+      sheetDone = true;
+      setBusy('Đang xoá trên Supabase…');
+      for (let s = 0; s < idx.length; s += 500) {
+        const { error } = await supabase.rpc('bkx_remove', { p_ids: idx.slice(s, s + 500).map(r => E.ids[r]) });
+        if (error) throw error;
       }
-      if (target !== 'gs') {
-        setBusy('Đang xoá trên Supabase…');
-        for (let s = 0; s < idx.length; s += 500) {
-          const { error } = await supabase.rpc('bkx_remove', { p_ids: idx.slice(s, s + 500).map(r => E.ids[r]) });
-          if (error) throw error;
-        }
-        const keep = E.data.map((_, i) => i).filter(i => !E.sel.has(i));
-        const oldDirty = E.dirty;
-        E.data = keep.map(i => E.data[i]); E.orig = keep.map(i => E.orig[i]);
-        E.ids = keep.map(i => E.ids[i]); E.nums = keep.map(i => E.nums[i]);
-        E.dirty = new Set(); keep.forEach((o, nI) => { if (oldDirty.has(o)) E.dirty.add(nI); });
-      }
+      const keep = E.data.map((_, i) => i).filter(i => !E.sel.has(i));
+      const oldDirty = E.dirty;
+      E.data = keep.map(i => E.data[i]); E.orig = keep.map(i => E.orig[i]);
+      E.ids = keep.map(i => E.ids[i]); E.nums = keep.map(i => E.nums[i]);
+      E.dirty = new Set(); keep.forEach((o, nI) => { if (oldDirty.has(o)) E.dirty.add(nI); });
       E.sel = new Set(); E.undo = [];
-      const doneMsg = '✔ Đã xoá ' + idx.length + ' dòng' + (target === 'both' ? ' trên Supabase và ' + gsN + ' dòng trên Google Sheet.' : target === 'sb' ? ' trên Supabase.' : ' — Google Sheet: ' + gsN + ' dòng.');
       window.dispatchEvent(new Event('bk-changed'));
       setGk(k => k + 1);
-      if (!E.dirty.size && E.loaded) await search(E.loaded);     // lấy lại số dòng Sheet (các dòng bên dưới đã dịch lên)
+      const doneMsg = '✔ Đã xoá ' + idx.length + ' dòng trên Supabase và ' + gsN + ' dòng trên Google Sheet.';
+      if (!E.dirty.size && E.loaded) await search(E.loaded);     // lấy lại số dòng Sheet mới (các dòng bên dưới đã dịch lên)
       ok(doneMsg);
-    } catch (e) { bad('Xoá thất bại: ' + (e.message || e)); }
+    } catch (e) {
+      bad((sheetDone ? 'Đã xoá trên Google Sheet nhưng xoá Supabase lỗi: ' : 'Xoá thất bại: ') + (e.message || e) + (sheetDone ? '. Hãy bấm Xoá lần nữa để hoàn tất.' : ''));
+    }
     setBusy(''); re();
   };
 
   // ----- Import: ghi Supabase trước, rồi đồng bộ xuống Google Sheet -----
   const importFilled = () => I.data.map((r, i) => ({ r, i })).filter(x => x.r.some(v => String(v).trim() !== ''));
-  const saveImport = async () => {
+    const saveImport = async () => {
     const rows = importFilled();
     if (!rows.length) return alert('Chưa có dữ liệu để lưu.');
     const miss = rows.filter(x => !bkTrim(x.r[0]) || !bkTrim(x.r[1]));
@@ -1778,11 +1774,11 @@ function BomKanban() {
     const uniq = rows.filter((x, k) => lastIdx.get(bkKey(x.r, 0)) === k);        // trùng khoá LSX-STT: giữ dòng sau cùng
     const dup = rows.length - uniq.length;
     const yes = await ask({ icon: 'fa-file-import', title: 'Thêm dòng mới',
-      message: 'Dữ liệu được ghi vào Supabase trước, sau đó đồng bộ xuống Google Sheet.',
+      message: 'Dữ liệu được ghi vào Supabase trước, sau đó nối tiếp xuống cuối Google Sheet (cột A → FA).',
       chips: [uniq.length + ' dòng'].concat(dup ? [dup + ' dòng trùng khoá LSX-STT (giữ dòng sau cùng)'] : []), confirmText: 'Lưu & đồng bộ' });
     if (!yes) return;
     setMsg(null);
-    const rowOf = {};                                           // khoá -> số dòng trên Sheet (dòng đã có sẵn)
+    const rowOf = {};                                           // khoá -> số dòng Sheet (dòng đã có sẵn trên Supabase)
     try {
       setBusy('Đang kiểm tra dòng đã có…');
       for (let s = 0; s < uniq.length; s += 500) {
@@ -1798,19 +1794,20 @@ function BomKanban() {
     } catch (e) { bad('Lưu Supabase thất bại: ' + (e.message || e)); setBusy(''); return; }
     try {
       for (let s = 0; s < uniq.length; s += 400) {
-        setBusy('Đang đồng bộ xuống Google Sheet… ' + Math.min(s + 400, uniq.length) + '/' + uniq.length);
-        await gs('upsert', { items: uniq.slice(s, s + 400).map(x => { const key = bkKey(x.r, 0); return { key, row: rowOf[key] || 0, values: x.r.map(String), cols: null }; }) });
+        setBusy('Đang ghi xuống Google Sheet… ' + Math.min(s + 400, uniq.length) + '/' + uniq.length);
+        await gs('upsert', { items: uniq.slice(s, s + 400).map(x => {
+          const key = bkKey(x.r, 0);
+          return { key, row: rowOf[key] || 0, known: key in rowOf, values: x.r.map(String), cols: null };
+        }) });
       }
     } catch (e) {
-      bad('Đã ghi Supabase nhưng GHI SHEET LỖI: ' + (e.message || e) + '. Dữ liệu vẫn còn trong bảng — hãy bấm Lưu lần nữa để thử lại (nếu bỏ qua, lần đồng bộ Sheet→Supabase sau sẽ xoá các dòng này khỏi Supabase).');
+      bad('Đã ghi Supabase nhưng GHI SHEET LỖI: ' + (e.message || e) + '. Dữ liệu vẫn còn trong bảng, hãy bấm Lưu lần nữa để thử lại (an toàn, không tạo dòng trùng).');
       setBusy(''); return;
     }
-    const firstLsx = String(rows[0].r[0]).trim();
-    I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = [];
-    ok('✔ Đã thêm ' + uniq.length + ' dòng vào Supabase và Google Sheet.');
+    I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = [];      // xoá bảng để dán đợt tiếp theo, VẪN Ở LẠI tab Up Bom
+    ok('✔ Đã lưu ' + uniq.length + ' dòng vào Supabase và nối tiếp xuống Google Sheet.');
     window.dispatchEvent(new Event('bk-changed'));
-    setMode('edit'); setInput(firstLsx); setGk(k => k + 1); setBusy('');
-    E.dirty = new Set(); search(firstLsx);
+    setGk(k => k + 1); setBusy('');
   };
 
   // ----- Đưa 5 dòng cuối cùng trong Supabase lên bảng Import -----
@@ -1829,7 +1826,12 @@ function BomKanban() {
     setBusy('');
   };
   const addRows = () => { for (let k = 0; k < 100; k++) I.data.push(blankRow()); re(); };
-  const clearImport = () => { if (!confirm('Xoá toàn bộ nội dung đang dán?')) return; I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = []; setGk(k => k + 1); };
+  const clearImport = async () => {
+    if (!(await ask({ danger: true, icon: 'fa-eraser', title: 'Xoá hết nội dung đang dán?',
+      message: 'Toàn bộ dữ liệu trong bảng Up Bom sẽ bị xoá. Dữ liệu đã lưu trên Supabase và Google Sheet không bị ảnh hưởng.',
+      chips: [importFilled().length + ' dòng có dữ liệu'], confirmText: 'Xoá hết' }))) return;
+    I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = []; setGk(k => k + 1);
+  };
   const delLocal = () => { const keep = I.data.filter((_, i) => !I.sel.has(i)); I.data = keep.length ? keep : [blankRow()]; I.sel = new Set(); I.undo = []; setGk(k => k + 1); };
 
   const dis = (b) => ({ disabled: b || !!busy, style: { opacity: (b || busy) ? .5 : 1 } });
@@ -1844,12 +1846,12 @@ function BomKanban() {
               placeholder="Nhập lệnh sản xuất rồi nhấn Enter…" className="inp" style={{ width: 280 }} />
             <button className="btn btn-primary" onClick={() => search()}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
             {E.loaded && <span className="text-xs text-slate-500">{E.data.length} dòng · <b className="text-amber-600">{E.dirty.size} dòng đã sửa</b> · <b className="text-red-600">{E.sel.size} dòng đang chọn</b></span>}
-            <button className="btn ml-auto" onClick={() => setMode('import')}><i className="fa-solid fa-file-import"></i> Import</button>
+            <button className="btn ml-auto" onClick={() => setMode('import')}><i className="fa-solid fa-arrow-left"></i> Up Bom</button>
             <button className="btn btn-red" onClick={deleteSel} {...dis(!E.sel.size)}><i className="fa-solid fa-trash"></i> Xoá dòng đã chọn ({E.sel.size})</button>
             <button className="btn btn-green" onClick={saveEdit} {...dis(!E.dirty.size)}><i className="fa-solid fa-floppy-disk"></i> Lưu thay đổi ({E.dirty.size})</button>
           </>) : (<>
-            <button className="btn" onClick={() => setMode('edit')}><i className="fa-solid fa-arrow-left"></i> Quay lại</button>
-            <span className="font-bold text-slate-700 text-sm">Import BOM Kanban</span>
+            <button className="btn btn-primary" onClick={() => setMode('edit')}><i className="fa-solid fa-pen"></i> Sửa Bom</button>
+            <span className="font-bold text-slate-700 text-sm">Up BOM Kanban</span>
             <span className="text-xs text-slate-500">{importFilled().length} dòng có dữ liệu · {I.sel.size} dòng đang chọn</span>
             <button className="btn ml-auto" onClick={loadLast5} {...dis(false)}><i className="fa-solid fa-clock-rotate-left"></i> 5 dòng cuối</button>
             <button className="btn" onClick={addRows}><i className="fa-solid fa-plus"></i> Thêm 100 dòng</button>
