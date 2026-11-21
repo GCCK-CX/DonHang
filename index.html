@@ -1711,7 +1711,7 @@ function BomKanban() {
         for (let s = 0; s < idx.length; s += 200) {
           setBusy('Đang đồng bộ sang Google Sheet… ' + Math.min(s + 200, idx.length) + '/' + idx.length);
           await gs('upsert', { items: idx.slice(s, s + 200).map(r => ({
-            key: bkKey(E.data[r], E.nums[r]), oldKey: bkKey(E.orig[r], E.nums[r]),
+            key: bkKey(E.data[r], E.nums[r]), oldKey: bkKey(E.orig[r], E.nums[r]), row: E.nums[r] || 0,
             values: E.data[r], cols: diffCols(E.orig[r], E.data[r]) })) });
         }
       } catch (e) {
@@ -1734,8 +1734,8 @@ function BomKanban() {
       chips: ['LSX: ' + E.loaded, idx.length + ' dòng'], def: 'both',
       options: [
         { v: 'both', label: 'Xoá cả Supabase và Google Sheet', desc: 'Khuyên dùng — dữ liệu hai nơi luôn khớp nhau.' },
-        { v: 'sb', label: 'Chỉ xoá trên Supabase', desc: 'Dòng vẫn còn trên Sheet nên lần đồng bộ sau sẽ được nạp lại.' },
-        { v: 'gs', label: 'Chỉ xoá trên Google Sheet', desc: 'Lần đồng bộ sau sẽ xoá nốt các dòng này trên Supabase.' } ],
+        { v: 'sb', label: 'Chỉ xoá trên Supabase', desc: 'Dòng vẫn nằm trên Sheet (không còn đồng bộ ngược nên sẽ không quay lại).' },
+        { v: 'gs', label: 'Chỉ xoá trên Google Sheet', desc: 'Supabase vẫn giữ dòng (tem Kanban vẫn in được), không còn gắn với dòng nào trên Sheet.' } ],
       warn: 'Thao tác này không thể hoàn tác.', confirmText: 'Xác nhận xoá' });
     if (!target) return;
     setMsg(null);
@@ -1743,8 +1743,7 @@ function BomKanban() {
       let gsN = 0;
       if (target !== 'sb') {                                   // Sheet trước: nếu Supabase lỗi thì lần đồng bộ sau tự dọn tiếp
         setBusy('Đang xoá trên Google Sheet…');
-        const keys = idx.map(r => bkKey(E.orig[r], E.nums[r]));
-        for (let s = 0; s < keys.length; s += 5000) gsN += (await gs('delete', { keys: keys.slice(s, s + 5000) })).deleted;
+        gsN = (await gs('delete', { items: idx.map(r => ({ key: bkKey(E.orig[r], E.nums[r]), row: E.nums[r] })) })).deleted;
       }
       if (target !== 'gs') {
         setBusy('Đang xoá trên Supabase…');
@@ -1759,9 +1758,11 @@ function BomKanban() {
         E.dirty = new Set(); keep.forEach((o, nI) => { if (oldDirty.has(o)) E.dirty.add(nI); });
       }
       E.sel = new Set(); E.undo = [];
-      ok('✔ Đã xoá ' + idx.length + ' dòng' + (target === 'both' ? ' trên Supabase và ' + gsN + ' dòng trên Google Sheet.' : target === 'sb' ? ' trên Supabase.' : ' — Google Sheet: ' + gsN + ' dòng.'));
+      const doneMsg = '✔ Đã xoá ' + idx.length + ' dòng' + (target === 'both' ? ' trên Supabase và ' + gsN + ' dòng trên Google Sheet.' : target === 'sb' ? ' trên Supabase.' : ' — Google Sheet: ' + gsN + ' dòng.');
       window.dispatchEvent(new Event('bk-changed'));
       setGk(k => k + 1);
+      if (!E.dirty.size && E.loaded) await search(E.loaded);     // lấy lại số dòng Sheet (các dòng bên dưới đã dịch lên)
+      ok(doneMsg);
     } catch (e) { bad('Xoá thất bại: ' + (e.message || e)); }
     setBusy(''); re();
   };
@@ -1781,7 +1782,14 @@ function BomKanban() {
       chips: [uniq.length + ' dòng'].concat(dup ? [dup + ' dòng trùng khoá LSX-STT (giữ dòng sau cùng)'] : []), confirmText: 'Lưu & đồng bộ' });
     if (!yes) return;
     setMsg(null);
+    const rowOf = {};                                           // khoá -> số dòng trên Sheet (dòng đã có sẵn)
     try {
+      setBusy('Đang kiểm tra dòng đã có…');
+      for (let s = 0; s < uniq.length; s += 500) {
+        const { data, error } = await supabase.rpc('bkx_rows_of', { p_keys: uniq.slice(s, s + 500).map(x => bkKey(x.r, 0)) });
+        if (error) throw error;
+        Object.assign(rowOf, data || {});
+      }
       for (let s = 0; s < uniq.length; s += 200) {
         setBusy('Đang ghi Supabase… ' + Math.min(s + 200, uniq.length) + '/' + uniq.length);
         const { error } = await supabase.rpc('bkx_save', { p_rows: uniq.slice(s, s + 200).map(x => [null, null].concat(x.r.map(String))) });
@@ -1791,7 +1799,7 @@ function BomKanban() {
     try {
       for (let s = 0; s < uniq.length; s += 400) {
         setBusy('Đang đồng bộ xuống Google Sheet… ' + Math.min(s + 400, uniq.length) + '/' + uniq.length);
-        await gs('upsert', { items: uniq.slice(s, s + 400).map(x => ({ key: bkKey(x.r, 0), values: x.r.map(String), cols: null })) });
+        await gs('upsert', { items: uniq.slice(s, s + 400).map(x => { const key = bkKey(x.r, 0); return { key, row: rowOf[key] || 0, values: x.r.map(String), cols: null }; }) });
       }
     } catch (e) {
       bad('Đã ghi Supabase nhưng GHI SHEET LỖI: ' + (e.message || e) + '. Dữ liệu vẫn còn trong bảng — hãy bấm Lưu lần nữa để thử lại (nếu bỏ qua, lần đồng bộ Sheet→Supabase sau sẽ xoá các dòng này khỏi Supabase).');
