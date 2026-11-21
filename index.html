@@ -1383,8 +1383,8 @@ const blankRow = () => new Array(BK_N).fill('');
 const newBkStore = () => ({ data: [], orig: null, ids: [], nums: [], sel: new Set(), dirty: new Set(), undo: [], loaded: '' });
 
 // ---- Kết nối Google Apps Script (xoá / ghi Sheet) ----
-const GS_URL = "DÁN-LINK-/exec-VÀO-ĐÂY";
-const GS_TOKEN = "DOI-TOKEN-WEB-O-DAY";          // phải GIỐNG CFG.WEB_TOKEN trong Apps Script
+const GS_URL = "https://script.google.com/macros/s/AKfycbwascKMZ3QbvrbMjI63cdw3t-GcLB-lai1Nm-33jloTtiJyHrwCq-ENS_zYzZvRKZLr/exec";
+const GS_TOKEN = "chuoi-ngau-nhien-dai-cua-ban";          // phải GIỐNG CFG.WEB_TOKEN trong Apps Script
 async function gs(action, payload) {
   const res = await fetch(GS_URL, { method: 'POST', body: JSON.stringify({ token: GS_TOKEN, action, ...payload }) });
   let j; try { j = await res.json(); } catch (e) { throw new Error('Không đọc được phản hồi từ Apps Script (kiểm tra link /exec và quyền "Bất kỳ ai")'); }
