@@ -1804,6 +1804,21 @@ function BomKanban() {
   }, [dlg]);
   const ok = (s) => setMsg({ t: 'ok', s }), bad = (s) => setMsg({ t: 'err', s });
 
+  // Lệnh cuối cùng trong Supabase (theo id) — hiển thị để biết up lệnh tiếp theo
+  const [lastInfo, setLastInfo] = useState(null);
+  const refreshLast = async () => {
+    try {
+      const { data, error } = await supabase.from(TB_KANBAN).select('col_a, col_b').order('id', { ascending: false }).limit(1);
+      if (error) throw error;
+      setLastInfo(data && data[0] ? { lsx: data[0].col_a, stt: data[0].col_b } : null);
+    } catch (e) { console.error(e); }
+  };
+  useEffect(() => {
+    refreshLast();
+    window.addEventListener('bk-changed', refreshLast);
+    return () => window.removeEventListener('bk-changed', refreshLast);
+  }, []);
+
   // ----- Tìm LSX -----
   const search = async (val) => {
     const v = (typeof val === 'string' ? val : input).trim(); if (!v) return;
@@ -1903,10 +1918,6 @@ function BomKanban() {
     const lastIdx = new Map(); rows.forEach((x, k) => lastIdx.set(bkKey(x.r, 0), k));
     const uniq = rows.filter((x, k) => lastIdx.get(bkKey(x.r, 0)) === k);        // trùng khoá LSX-STT: giữ dòng sau cùng
     const dup = rows.length - uniq.length;
-    const yes = await ask({ icon: 'fa-file-import', title: 'Thêm dòng mới',
-      message: 'Dữ liệu được ghi vào Supabase trước, sau đó nối tiếp xuống cuối Google Sheet (cột A → FA).',
-      chips: [uniq.length + ' dòng'].concat(dup ? [dup + ' dòng trùng khoá LSX-STT (giữ dòng sau cùng)'] : []), confirmText: 'Lưu & đồng bộ' });
-    if (!yes) return;
     setMsg(null);
     const rowOf = {};                                           // khoá -> số dòng Sheet (dòng đã có sẵn trên Supabase)
     try {
@@ -1916,6 +1927,22 @@ function BomKanban() {
         if (error) throw error;
         Object.assign(rowOf, data || {});
       }
+    } catch (e) { bad('Kiểm tra dòng đã có thất bại: ' + (e.message || e)); setBusy(''); return; }
+    setBusy('');
+    const exist = Object.keys(rowOf).length;
+    const lsxs = Array.from(new Set(uniq.map(x => bkTrim(x.r[0])))).slice(0, 4);
+    const yes = await ask({ danger: exist > 0, icon: exist ? 'fa-triangle-exclamation' : 'fa-file-import',
+      title: exist ? 'Có dòng đã tồn tại!' : 'Thêm dòng mới',
+      message: exist
+        ? exist + ' dòng có cùng LSX-STT đã có sẵn trên Supabase/Google Sheet và sẽ bị GHI ĐÈ, không tạo dòng mới.'
+        : 'Dữ liệu được ghi vào Supabase trước, sau đó nối tiếp xuống cuối Google Sheet (cột A → FA).',
+      chips: ['LSX: ' + lsxs.join(', '), uniq.length + ' dòng', (uniq.length - exist) + ' dòng mới']
+        .concat(exist ? [exist + ' dòng ghi đè'] : [])
+        .concat(dup ? [dup + ' dòng trùng khoá trong bảng (giữ dòng sau cùng)'] : []),
+      warn: exist ? 'Nếu bạn up lệnh mới, hãy kiểm tra lại tên lệnh ở cột A.' : undefined,
+      confirmText: exist ? 'Vẫn ghi đè' : 'Lưu & đồng bộ' });
+    if (!yes) return;
+    try {
       for (let s = 0; s < uniq.length; s += 200) {
         setBusy('Đang ghi Supabase… ' + Math.min(s + 200, uniq.length) + '/' + uniq.length);
         const { error } = await supabase.rpc('bkx_save', { p_rows: uniq.slice(s, s + 200).map(x => [null, null].concat(x.r.map(String))) });
@@ -1947,7 +1974,7 @@ function BomKanban() {
     setBusy('Đang tải 5 dòng cuối…'); setMsg(null);
     try {
       const { data, error } = await supabase.from(TB_KANBAN).select('*')
-        .order('sheet_row', { ascending: false, nullsFirst: true }).order('id', { ascending: false }).limit(5);
+        .order('id', { ascending: false }).limit(5);
       if (error) throw error;
       const arr = data.reverse().map(d => BK_LETTERS.map(L => { const x = d['col_' + L.toLowerCase()]; return x == null ? '' : String(x); }));
       I.data = arr.concat(Array.from({ length: 25 }, blankRow)); I.sel = new Set(); I.undo = [];
@@ -1983,6 +2010,11 @@ function BomKanban() {
             <button className="btn btn-primary" onClick={() => setMode('edit')}><i className="fa-solid fa-pen"></i> Sửa Bom</button>
             <span className="font-bold text-slate-700 text-sm">Up BOM Kanban</span>
             <span className="text-xs text-slate-500">{importFilled().length} dòng có dữ liệu · {I.sel.size} dòng đang chọn</span>
+            {lastInfo && (
+              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200" title="Lệnh được ghi vào Supabase gần nhất">
+                Lệnh cuối: <b>{lastInfo.lsx}</b> · STT {lastInfo.stt}
+              </span>
+            )}
             <button className="btn ml-auto" onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setColPop({ x: b.left, y: b.bottom + 4 }); }}>
               <i className="fa-solid fa-table-columns"></i> Cột{I.hidden.size ? ' (' + I.hidden.size + ' ẩn)' : ''}
             </button>
