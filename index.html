@@ -202,8 +202,14 @@ button, input, select, textarea { font-family: inherit; }
   table.xg tr.lk td.rn { background:#cbd5e1; color:#475569; cursor:not-allowed; }
   table.xg tr.newr td { border-top:2px solid #2563eb; }
   /* BOM Đơn hàng: cho phép bôi đen / copy sang Excel, Google Sheet */
-  table.erp.bd, table.erp.bd td, table.erp.bd th { user-select:text; -webkit-user-select:text; }
-  table.erp.bd td { cursor:text; }
+  table.erp.bd { user-select:none; -webkit-user-select:none; }
+  table.erp.bd td { cursor:cell; }
+  table.erp.bd td.bsel { background:#dbeafe !important; }
+  .bd-box { outline:none; overflow-x:hidden !important; }
+  .bd-zoom { zoom: var(--bz, 1); }
+  table.erp.bd { width:100%; table-layout:fixed; }
+  table.erp.bd td { overflow:hidden; }
+  table.erp.bd td.wr { min-width:0; white-space:normal; overflow-wrap:anywhere; }
   table.erp.bd td.wr { white-space:normal; min-width:150px; }
 
   @media print {
@@ -2270,11 +2276,59 @@ function BomDonHang({ active }) {
   };
   // Bôi đen toàn bộ bảng (rồi Ctrl+C)
   const selectTable = () => {
-    const s = window.getSelection(), rg = document.createRange();
-    rg.selectNode(tblRef.current); s.removeAllRanges(); s.addRange(rg);
+    if (!shown.length) return;
+    setRng({ ar: 0, ac: 0, br: shown.length - 1, bc: BD_COLS.length - 1 });
+    if (boxRef.current) boxRef.current.focus({ preventScroll: true });
   };
 
   const nGrp = (g) => BD_COLS.filter(c => c.grp === g).length;
+    const boxRef = useRef(null), dragRef = useRef(false);
+
+    // ---- Thu nhỏ bảng vừa bề rộng khung (CSS zoom, giống tab In đơn hàng) ----
+  const BD_TOTAL = BD_COLS.reduce((a, c) => a + c.w, 0);
+  const [boxW, setBoxW] = useState(0);
+  useEffect(() => {
+    const el = boxRef.current; if (!el) return;
+    const m = () => { const w = el.clientWidth; if (w > 0) setBoxW(w); };
+    m();
+    const ro = new ResizeObserver(m); ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const bz = boxW ? Math.floor(Math.min(1.4, (boxW - 4) / BD_TOTAL) * 1000) / 1000 : 1;
+
+  // ---- Chọn vùng ô kiểu Excel: bấm / kéo / Shift+bấm, Ctrl+A, Ctrl+C ----
+  const [rng, setRng] = useState(null);                  // { ar, ac, br, bc } = ô bắt đầu và ô đang trỏ
+  useEffect(() => { setRng(null); }, [data, quick]);     // đổi lệnh / lọc thì bỏ vùng chọn
+  useEffect(() => {
+    const up = () => { dragRef.current = false; };
+    window.addEventListener('mouseup', up);
+    return () => window.removeEventListener('mouseup', up);
+  }, []);
+  const R = rng ? { r1: Math.min(rng.ar, rng.br), r2: Math.max(rng.ar, rng.br), c1: Math.min(rng.ac, rng.bc), c2: Math.max(rng.ac, rng.bc) } : null;
+  const cDown = (e, r, c) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    if (boxRef.current) boxRef.current.focus({ preventScroll: true });
+    dragRef.current = true;
+    setRng(p => (e.shiftKey && p) ? { ...p, br: r, bc: c } : { ar: r, ac: c, br: r, bc: c });
+  };
+  const cEnter = (r, c) => { if (dragRef.current) setRng(p => p ? { ...p, br: r, bc: c } : p); };
+  const onBoxMove = (e) => {                             // kéo sát mép thì tự cuộn
+    if (!dragRef.current) return;
+    const el = boxRef.current, rc = el.getBoundingClientRect();
+    if (e.clientY > rc.bottom - 30) el.scrollTop += 20; else if (e.clientY < rc.top + 60) el.scrollTop -= 20;
+    if (e.clientX > rc.right - 30) el.scrollLeft += 30; else if (e.clientX < rc.left + 30) el.scrollLeft -= 30;
+  };
+  const onBoxCopy = (e) => {
+    if (!R) return;
+    const text = shown.slice(R.r1, R.r2 + 1).map(a => a.slice(R.c1, R.c2 + 1).map(tsvQ).join('\t')).join('\n');
+    e.clipboardData.setData('text/plain', text); e.preventDefault();
+    setCopied(true); setTimeout(() => setCopied(false), 1500);
+  };
+  const onBoxKey = (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectTable(); }
+    else if (e.key === 'Escape') setRng(null);
+  };
 
   return (
     <div className="space-y-3">
@@ -2287,14 +2341,18 @@ function BomDonHang({ active }) {
         <button className="btn" onClick={() => load(lsx)} disabled={!lsx}><i className="fa-solid fa-rotate"></i> Làm mới</button>
         <input value={quick} onChange={e => setQuick(e.target.value)} placeholder="Lọc nhanh trong bảng…" className="inp" style={{ width: 200 }} />
         <span className="text-xs text-slate-500">{lsx ? shown.length + ' / ' + data.length + ' chi tiết' : ''}</span>
+        {R && <span className="text-xs font-semibold text-blue-700">Đang chọn {(R.r2 - R.r1 + 1) * (R.c2 - R.c1 + 1)} ô · Ctrl+C để sao chép</span>}
         <button className="btn ml-auto" onClick={selectTable} disabled={!shown.length}><i className="fa-solid fa-object-group"></i> Chọn cả bảng</button>
         <button className="btn btn-green" onClick={copyAll} disabled={!shown.length}>
           <i className={'fa-solid ' + (copied ? 'fa-check' : 'fa-copy')}></i> {copied ? 'Đã sao chép' : 'Sao chép bảng'}
         </button>
       </div>
 
-      <div className="card overflow-auto" style={{ maxHeight: 'calc(100vh - 230px)' }}>
-        <table className="erp bd" ref={tblRef}>
+      <div className="card overflow-auto bd-box" ref={boxRef} tabIndex={0} style={{ maxHeight: 'calc(100vh - 230px)' }}
+           onCopy={onBoxCopy} onKeyDown={onBoxKey} onMouseMove={onBoxMove}>
+        <div className="bd-zoom" style={{ '--bz': bz }}>
+        <table className="erp bd" ref={tblRef} style={{ width: BD_TOTAL }}>
+          <colgroup>{BD_COLS.map((c, i) => <col key={i} style={{ width: c.w }} />)}</colgroup>
           <thead>
             <tr>
               {BD_COLS.map((c, i) => {
@@ -2320,12 +2378,25 @@ function BomDonHang({ active }) {
               <tr key={ri}>
                 {a.map((v, ci) => {
                   const c = BD_COLS[ci];
-                  return <td key={ci} className={(c.key ? 'key ' : '') + (c.ctr ? 'ctr ' : '') + (c.wr ? 'wr' : '')}>{v}</td>;
+                  const inR = R && ri >= R.r1 && ri <= R.r2 && ci >= R.c1 && ci <= R.c2;
+                  let sh;
+                  if (inR) {                                   // viền xanh bao quanh vùng chọn
+                    const s = [];
+                    if (ri === R.r1) s.push('inset 0 2px 0 #2563eb');
+                    if (ri === R.r2) s.push('inset 0 -2px 0 #2563eb');
+                    if (ci === R.c1) s.push('inset 2px 0 0 #2563eb');
+                    if (ci === R.c2) s.push('inset -2px 0 0 #2563eb');
+                    sh = s.join(',');
+                  }
+                  return <td key={ci} className={(c.key ? 'key ' : '') + (c.ctr ? 'ctr ' : '') + (c.wr ? 'wr ' : '') + (inR ? 'bsel' : '')}
+                             style={sh ? { boxShadow: sh } : undefined}
+                             onMouseDown={e => cDown(e, ri, ci)} onMouseEnter={() => cEnter(ri, ci)}>{v}</td>;
                 })}
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );
