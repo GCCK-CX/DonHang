@@ -2194,7 +2194,7 @@ function bdProc(r) {
 const BD_COLS = [
   { h: 'KHGH', w: 100, ctr: 1, g: (r, x) => x.khgh },
   { h: 'LSX', w: 120, ctr: 1, key: 1, g: r => cell(r, 'A') },
-  { h: 'Sản phẩm', w: 150, wr: 1, g: r => cell(r, 'D') },
+  { h: 'Sản phẩm', w: 220, wr: 1, g: (r, x) => x.sp },
   { h: 'STT', w: 60, ctr: 1, g: r => cell(r, 'B') },
   { h: 'MSCT', w: 130, g: r => cell(r, 'Q') },
   { h: 'Tên chi tiết', w: 230, wr: 1, g: r => cell(r, 'R') },
@@ -2207,7 +2207,7 @@ const BD_COLS = [
   { h: 'Dt', grp: 'q', w: 70, ctr: 1, g: r => cell(r, 'AG') },
   { h: 'SL/bộ', w: 70, ctr: 1, g: r => cell(r, 'AI') },
   { h: 'SL/ĐH', w: 70, ctr: 1, key: 1, g: r => cell(r, 'AJ') },
-  { h: 'Khối lượng', w: 90, ctr: 1, g: r => cell(r, 'AK') },          // AK = KL/CT. Muốn lấy KL/bộ đổi thành 'AL', KL/ĐH đổi thành 'AM'
+  { h: 'Khối lượng', w: 90, ctr: 1, g: r => cell(r, 'AM') },
   { h: 'Công đoạn trước', w: 130, ctr: 1, g: (r, x) => x.p.before },
   ...BD_PROC6.map(([L, label]) => ({ h: label, grp: 'x', w: 70, ctr: 1, g: r => cell(r, L) })),
   { h: 'Công đoạn sau', w: 130, ctr: 1, g: (r, x) => x.p.after },
@@ -2239,9 +2239,9 @@ function BomDonHang({ active }) {
         const keys = Array.from(new Set(data.map(d => String(d.col_a || '').trim()).filter(Boolean)));
         const m = {};
         if (keys.length) {
-          const { data: p, error } = await supabase.from(TB_PKH).select('lsx, ngay_hoan_thanh').in('lsx', keys);
+          const { data: p, error } = await supabase.from(TB_PKH).select('lsx, ngay_hoan_thanh, ten_don_hang').in('lsx', keys);
           if (error) throw error;
-          (p || []).forEach(x => { const k = normKey(x.lsx); if (!m[k]) m[k] = x.ngay_hoan_thanh ? String(x.ngay_hoan_thanh) : ''; });
+          (p || []).forEach(x => { const k = normKey(x.lsx); if (!m[k]) m[k] = { khgh: x.ngay_hoan_thanh ? String(x.ngay_hoan_thanh) : '', ten: x.ten_don_hang ? String(x.ten_don_hang) : '' }; });
         }
         setPkh(m);
       } catch (e2) { console.error('LSX_PKH:', e2); setPkh({}); }
@@ -2252,7 +2252,8 @@ function BomDonHang({ active }) {
   useEffect(() => { if (active && lsx) load(lsx); }, [active]);      // quay lại tab thì tải lại dữ liệu mới nhất
 
   const data = useMemo(() => rows.map(r => {
-    const x = { khgh: pkh[normKey(cell(r, 'A'))] || '', p: bdProc(r) };
+    const info = pkh[normKey(cell(r, 'A'))] || {};
+    const x = { khgh: info.khgh || '', sp: info.ten || '', p: bdProc(r) };
     return BD_COLS.map(c => String(c.g(r, x) == null ? '' : c.g(r, x)));
   }), [rows, pkh]);
   const shown = useMemo(() => {
