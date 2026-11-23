@@ -197,6 +197,15 @@ button, input, select, textarea { font-family: inherit; }
   .flt-row em { font-style:normal; color:#94a3b8; font-size:11px; }
   .flt-act { display:flex; justify-content:flex-end; gap:8px; }
 
+    /* BOM Kanban: dòng của lệnh đã lưu (chỉ đọc) + đường kẻ phân cách dòng mới */
+  table.xg tr.lk td { background:#eef2f7; color:#64748b; cursor:not-allowed; }
+  table.xg tr.lk td.rn { background:#cbd5e1; color:#475569; cursor:not-allowed; }
+  table.xg tr.newr td { border-top:2px solid #2563eb; }
+  /* BOM Đơn hàng: cho phép bôi đen / copy sang Excel, Google Sheet */
+  table.erp.bd, table.erp.bd td, table.erp.bd th { user-select:text; -webkit-user-select:text; }
+  table.erp.bd td { cursor:text; }
+  table.erp.bd td.wr { white-space:normal; min-width:150px; }
+
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
     .no-print { display:none !important; }
@@ -296,7 +305,7 @@ const getSteps = (r) => {
   PROC_COLS.forEach(([L, label]) => {
     const v = cell(r, L);
     if (!v) return;
-    v.split(/[;,]/).forEach(p => {
+    v.split(/[;,.]/).forEach(p => {
       const n = parseInt(p.trim(), 10);
       if (n > 0) out.push({ L, label, n });
     });
@@ -1444,9 +1453,9 @@ function parseTSV(text) {
 const tsvQ = (v) => /[\t\n"]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 
 // 1 dòng của lưới (memo: cuộn / chọn chỉ vẽ lại dòng thật sự đổi)
-const XRow = React.memo(function XRow({ r, row, orig, sel, actC, ed, no, H, vis, lefts, fz, lastFz, rc1, rc2 }) {
+const XRow = React.memo(function XRow({ r, row, orig, sel, lk, nw, actC, ed, no, H, vis, lefts, fz, lastFz, rc1, rc2 }) {
   return (
-    <tr className={sel ? 'sel' : ''} data-r={r}>
+    <tr className={(sel ? 'sel ' : '') + (lk ? 'lk ' : '') + (nw ? 'newr' : '')} data-r={r}>
       <td className="rn" onMouseDown={e => H.current.down(e, r, -1)}>{no}</td>
       {vis.map(c => {
         const v = row[c];
@@ -1475,8 +1484,8 @@ function SheetGrid({ store, onChange, canAdd }) {
   const boxRef = useRef(null), headRef = useRef(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [vh, setVh] = useState(600);
-  const [act, setAct] = useState({ r: 0, c: 0 });
-  const [anc, setAnc] = useState({ r: 0, c: 0 });       // điểm neo của vùng chọn (act = ô đang trỏ)
+  const [act, setAct] = useState({ r: store.base || 0, c: 0 });      // mở lên là trỏ sẵn vào dòng đầu tiên để dán lệnh mới
+  const [anc, setAnc] = useState({ r: store.base || 0, c: 0 });      // điểm neo của vùng chọn (act = ô đang trỏ)
   const [ed, setEd] = useState(null);
   const [drag, setDrag] = useState(null);
   const edRef = useRef(null), dragRef = useRef(null), H = useRef({});
@@ -1521,8 +1530,9 @@ function SheetGrid({ store, onChange, canAdd }) {
     if (diff) store.dirty.add(r); else store.dirty.delete(r);
   };
   const applyRows = (map) => {                               // map: Map(r -> dòng mới). Lưu dòng cũ để hoàn tác
-    const snap = [];
-    map.forEach((row, r) => { snap.push({ r, row: store.data[r] }); store.data[r] = row; refreshDirty(r); });
+    const snap = [], base = store.base || 0;
+    map.forEach((row, r) => { if (r < base) return; snap.push({ r, row: store.data[r] }); store.data[r] = row; refreshDirty(r); });   // dòng của lệnh đã lưu: chỉ đọc
+    if (!snap.length) return;
     store.undo.push(snap); if (store.undo.length > 100) store.undo.shift();
     onChange();
   };
@@ -1591,7 +1601,7 @@ function SheetGrid({ store, onChange, canAdd }) {
   };
 
   // ---------- sửa ô ----------
-  const startEdit = (r, c, selAll) => { const e = { r, c, v: store.data[r][c], sel: !!selAll }; edRef.current = e; setEd(e); };
+  const startEdit = (r, c, selAll) => { if (r < (store.base || 0)) return; const e = { r, c, v: store.data[r][c], sel: !!selAll }; edRef.current = e; setEd(e); };
   const edChange = (v) => { const e = { ...edRef.current, v, sel: false }; edRef.current = e; setEd(e); };
   const finishEdit = (save, dr, dc, focusBack) => {
     const e = edRef.current; if (!e) return;
@@ -1741,6 +1751,7 @@ function SheetGrid({ store, onChange, canAdd }) {
     const text = e.clipboardData.getData('text'); if (!text || !n) return;
     // Dán theo vị trí cột THẬT (A, B, C…): cột đang ẩn vẫn nhận dữ liệu như trên Google Sheet
     const m = parseTSV(text), r0 = R1, c0 = fixCol(C1);
+    if (r0 < (store.base || 0)) { alert('Các dòng 1–' + store.base + ' là lệnh đã lưu (chỉ đọc, sẽ không lưu lại). Hãy bấm vào ô cột A của dòng ' + (store.base + 1) + ' rồi dán.'); return; }
     let skipped = 0;
     const need = r0 + m.length - store.data.length;
     if (need > 0) { if (canAdd) { for (let k = 0; k < need; k++) store.data.push(blankRow()); } else skipped = need; }
@@ -1756,6 +1767,17 @@ function SheetGrid({ store, onChange, canAdd }) {
   };
 
   H.current = { down, edit: startEdit, edChange, edKey, edBlur, move, up, tick };
+
+  // Mở bảng: cuộn tới dòng mới đầu tiên (ngay sau lệnh gần nhất) và focus sẵn để Ctrl+V
+  useEffect(() => {
+    if (!store.base) return;
+    const t = setTimeout(() => {
+      const el = boxRef.current; if (!el) return;
+      el.scrollTop = Math.max(0, (store.base - 3) * BK_RH);
+      el.focus({ preventScroll: true });
+    }, 30);
+    return () => clearTimeout(t);
+  }, []);
 
   // ---------- vẽ (chỉ vẽ các dòng đang nhìn thấy) ----------
   const first = Math.max(0, Math.floor(scrollTop / BK_RH) - 6);
@@ -1795,6 +1817,7 @@ function SheetGrid({ store, onChange, canAdd }) {
           {Array.from({ length: Math.max(0, last - first) }, (_, k) => {
             const r = first + k;
             return <XRow key={r} r={r} row={store.data[r]} orig={store.orig ? store.orig[r] : null} sel={isSel(r)}
+                         lk={r < (store.base || 0)} nw={(store.base || 0) > 0 && r === store.base}
                          actC={act.r === r ? act.c : -1} ed={ed && ed.r === r ? ed : null}
                          no={store.nums.length ? store.nums[r] : r + 1} H={H}
                          vis={vis} lefts={lefts} fz={fz} lastFz={lastFz}
@@ -1852,7 +1875,7 @@ function ColPickPop({ store, pos, onChange, onClose }) {
   );
 }
 
-function BomKanban() {
+function BomKanban({ active }) {
   const [mode, setMode] = useState('import');          // 'import' = Up Bom (mở trước) · 'edit' = Sửa Bom
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1878,21 +1901,29 @@ function BomKanban() {
   }, [dlg]);
   const ok = (s) => setMsg({ t: 'ok', s }), bad = (s) => setMsg({ t: 'err', s });
 
-  // Lệnh cuối cùng trong Supabase (theo id) — hiển thị để biết up lệnh tiếp theo
-  const [lastInfo, setLastInfo] = useState(null);
-  const refreshLast = async () => {
+  // Nạp LỆNH GẦN ĐÂY NHẤT (toàn bộ các dòng của lệnh đó) lên bảng Up Bom.
+  // I.base = số dòng đã có -> các dòng này chỉ đọc, khi lưu chỉ lưu từ dòng I.base + 1 trở đi.
+  const loadLatest = async (quiet) => {
+    setBusy('Đang tải lệnh gần đây nhất…'); if (!quiet) setMsg(null);
     try {
-      const { data, error } = await supabase.from(TB_KANBAN).select('col_a, col_b')
+      const { data: lr, error: e1 } = await supabase.from(TB_KANBAN).select('col_a')
         .order('sheet_row', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).limit(1);
-      if (error) throw error;
-      setLastInfo(data && data[0] ? { lsx: data[0].col_a, stt: data[0].col_b } : null);
-    } catch (e) { console.error(e); }
+      if (e1) throw e1;
+      const lsx = lr && lr[0] ? lr[0].col_a : '';
+      let arr = [];
+      if (lsx) {
+        const data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', lsx).order('sheet_row').order('id'));
+        arr = data.map(d => BK_LETTERS.map(L => { const x = d['col_' + L.toLowerCase()]; return x == null ? '' : String(x); }));
+      }
+      I.data = arr.concat(Array.from({ length: 30 }, blankRow));
+      I.base = arr.length; I.baseLsx = lsx; I.sel = new Set(); I.undo = [];
+      setGk(k => k + 1);
+      if (!quiet) ok(arr.length ? '✔ Đã nạp lệnh gần đây nhất: ' + lsx + ' (' + arr.length + ' dòng). Hãy dán lệnh mới từ dòng ' + (arr.length + 1) + '.' : 'Chưa có lệnh nào trong Supabase.');
+    } catch (e) { bad('Không tải được: ' + (e.message || e)); }
+    setBusy('');
   };
-  useEffect(() => {
-    refreshLast();
-    window.addEventListener('bk-changed', refreshLast);
-    return () => window.removeEventListener('bk-changed', refreshLast);
-  }, []);
+  // Mỗi lần bấm vào tab BOM Kanban: nếu chưa có dòng mới nào đang dán dở thì nạp lại lệnh gần nhất
+  useEffect(() => { if (active && mode === 'import' && !importFilled().length) loadLatest(true); }, [active]);
 
   // ----- Tìm LSX -----
   const search = async (val) => {
@@ -1984,7 +2015,7 @@ function BomKanban() {
   };
 
   // ----- Import: ghi Supabase trước, rồi đồng bộ xuống Google Sheet -----
-  const importFilled = () => I.data.map((r, i) => ({ r, i })).filter(x => x.r.some(v => String(v).trim() !== ''));
+  const importFilled = () => I.data.map((r, i) => ({ r, i })).filter(x => x.i >= (I.base || 0) && x.r.some(v => String(v).trim() !== ''));
     const saveImport = async () => {
     const rows = importFilled();
     if (!rows.length) return alert('Chưa có dữ liệu để lưu.');
@@ -2036,35 +2067,25 @@ function BomKanban() {
       bad('Đã ghi Supabase nhưng GHI SHEET LỖI: ' + (e.message || e) + '. Dữ liệu vẫn còn trong bảng, hãy bấm Lưu lần nữa để thử lại (an toàn, không tạo dòng trùng).');
       setBusy(''); return;
     }
-    I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = [];      // xoá bảng để dán đợt tiếp theo, VẪN Ở LẠI tab Up Bom
-    ok('✔ Đã lưu ' + uniq.length + ' dòng vào Supabase và nối tiếp xuống Google Sheet.');
     window.dispatchEvent(new Event('bk-changed'));
-    setGk(k => k + 1); setBusy('');
+    await loadLatest(true);          // bảng nạp lại = lệnh vừa lưu (nằm cuối), lệnh mới dán tiếp bên dưới
+    ok('✔ Đã lưu ' + uniq.length + ' dòng vào Supabase và nối tiếp xuống Google Sheet.');
   };
 
-  // ----- Đưa 5 dòng cuối cùng trong Supabase lên bảng Import -----
-  const loadLast5 = async () => {
+    // ----- Nút "Lệnh gần đây nhất" -----
+  const loadLatestBtn = async () => {
     if (importFilled().length && !(await ask({ icon: 'fa-clock-rotate-left', title: 'Thay nội dung bảng?',
-      message: 'Bảng đang có dữ liệu chưa lưu. Đưa 5 dòng cuối lên sẽ thay thế toàn bộ nội dung này.', confirmText: 'Thay thế' }))) return;
-    setBusy('Đang tải 5 dòng cuối…'); setMsg(null);
-    try {
-      const { data, error } = await supabase.from(TB_KANBAN).select('*')
-        .order('sheet_row', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).limit(5);
-      if (error) throw error;
-      const arr = data.reverse().map(d => BK_LETTERS.map(L => { const x = d['col_' + L.toLowerCase()]; return x == null ? '' : String(x); }));
-      I.data = arr.concat(Array.from({ length: 25 }, blankRow)); I.sel = new Set(); I.undo = [];
-      setGk(k => k + 1); ok('✔ Đã đưa ' + arr.length + ' dòng cuối cùng (đúng thứ tự dưới Google Sheet) lên bảng.');
-    } catch (e) { bad('Không tải được: ' + (e.message || e)); }
-    setBusy('');
+      message: 'Bảng đang có dòng mới chưa lưu. Nạp lệnh gần đây nhất sẽ thay thế toàn bộ nội dung này.', confirmText: 'Thay thế' }))) return;
+    await loadLatest(false);
   };
   const addRows = () => { for (let k = 0; k < 100; k++) I.data.push(blankRow()); re(); };
-  const clearImport = async () => {
-    if (!(await ask({ danger: true, icon: 'fa-eraser', title: 'Xoá hết nội dung đang dán?',
-      message: 'Toàn bộ dữ liệu trong bảng Up Bom sẽ bị xoá. Dữ liệu đã lưu trên Supabase và Google Sheet không bị ảnh hưởng.',
-      chips: [importFilled().length + ' dòng có dữ liệu'], confirmText: 'Xoá hết' }))) return;
-    I.data = Array.from({ length: 30 }, blankRow); I.sel = new Set(); I.undo = []; setGk(k => k + 1);
+  // Xoá hết: xoá luôn, KHÔNG hỏi xác nhận (muốn lấy lại lệnh gần nhất thì bấm "Lệnh gần đây nhất")
+  const clearImport = () => { I.data = Array.from({ length: 30 }, blankRow); I.base = 0; I.baseLsx = ''; I.sel = new Set(); I.undo = []; setGk(k => k + 1); };
+  const delLocal = () => {
+    const b = I.base || 0;
+    const keep = I.data.filter((_, i) => i < b || !I.sel.has(i));       // dòng của lệnh đã lưu không bị bỏ
+    I.data = keep.length ? keep : [blankRow()]; I.sel = new Set(); I.undo = []; setGk(k => k + 1);
   };
-  const delLocal = () => { const keep = I.data.filter((_, i) => !I.sel.has(i)); I.data = keep.length ? keep : [blankRow()]; I.sel = new Set(); I.undo = []; setGk(k => k + 1); };
 
   const dis = (b) => ({ disabled: b || !!busy, style: { opacity: (b || busy) ? .5 : 1 } });
 
@@ -2084,16 +2105,11 @@ function BomKanban() {
           </>) : (<>
             <button className="btn btn-primary" onClick={() => setMode('edit')}><i className="fa-solid fa-pen"></i> Sửa Bom</button>
             <span className="font-bold text-slate-700 text-sm">Up BOM Kanban</span>
-            <span className="text-xs text-slate-500">{importFilled().length} dòng có dữ liệu · {I.sel.size} dòng đang chọn</span>
-            {lastInfo && (
-              <span className="text-xs font-semibold px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200" title="Lệnh được ghi vào Supabase gần nhất">
-                Lệnh cuối: <b>{lastInfo.lsx}</b> · STT {lastInfo.stt}
-              </span>
-            )}
+            <span className="text-xs text-slate-500">{importFilled().length} dòng mới sẽ lưu · {I.sel.size} dòng đang chọn</span>
             <button className="btn ml-auto" onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setColPop({ x: b.left, y: b.bottom + 4 }); }}>
               <i className="fa-solid fa-table-columns"></i> Cột{I.hidden.size ? ' (' + I.hidden.size + ' ẩn)' : ''}
             </button>
-            <button className="btn" onClick={loadLast5} {...dis(false)}><i className="fa-solid fa-clock-rotate-left"></i> 5 dòng cuối</button>
+            <button className="btn" onClick={loadLatestBtn} {...dis(false)}><i className="fa-solid fa-clock-rotate-left"></i> Lệnh gần đây nhất</button>
             <button className="btn" onClick={addRows}><i className="fa-solid fa-plus"></i> Thêm 100 dòng</button>
             <button className="btn" onClick={delLocal} {...dis(!I.sel.size)}><i className="fa-solid fa-eraser"></i> Bỏ dòng đã chọn</button>
             <button className="btn" onClick={clearImport}>Xoá hết</button>
@@ -2103,7 +2119,7 @@ function BomKanban() {
         <p className="text-xs text-gray-400 px-1">
           {mode === 'edit'
             ? 'Kéo chuột qua các ô để chọn vùng (Ctrl+D điền xuống · Ctrl+R điền sang phải) · gõ hoặc F2/nhấp đúp để sửa · Ctrl+C / V · Ctrl+Z hoàn tác · Delete xoá vùng · Chọn DÒNG: bấm hoặc kéo ở cột số thứ tự bên trái (đỏ nhạt).'
-            : 'Chọn ô A1 rồi Ctrl+V để dán từ Excel / Google Sheet (cột A → FA). Ctrl+D / Ctrl+R điền xuống / sang phải trên vùng ô đang kéo chọn · chọn DÒNG ở cột số thứ tự bên trái. Cột A (Lệnh sản xuất) và B (STT) là bắt buộc.'}
+            :             : 'Các dòng xám ở trên là lệnh gần đây nhất đã lưu (chỉ đọc, không lưu lại). Bấm vào cột A của dòng đầu tiên bên dưới đường kẻ xanh rồi Ctrl+V để dán lệnh mới (cột A → FA). Ctrl+D / Ctrl+R điền xuống / sang phải · Cột A (Lệnh sản xuất) và B (STT) là bắt buộc.'}
         </p>
         {busy && <div className="card p-3 text-sm text-blue-700 bg-blue-50">{busy}</div>}
         {msg && <div className={'card p-3 text-sm ' + (msg.t === 'err' ? 'text-red-700 bg-red-50' : 'text-green-700 bg-green-50')}>{msg.s}</div>}
@@ -2146,6 +2162,170 @@ function BomKanban() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// =====================================================================
+// 7C. BOM ĐƠN HÀNG — tra cứu chi tiết theo lệnh sản xuất (nguồn: Bomkanban), bôi đen / copy được
+// =====================================================================
+// 6 cột xưởng Gia Công Cắt Gọt (mã cột trong sheet BOM TỔNG VÀO)
+const BD_PROC6 = [['BC', 'Đúc nhôm'], ['BD', 'Cưa vòng'], ['BE', 'Tiện'], ['BF', 'Phay'], ['BG', 'Nguội'], ['BH', 'Nhiệt']];
+const BD_SIX = new Set(BD_PROC6.map(x => x[0]));
+const BD_OTHERS = PROC_COLS.filter(([L]) => !BD_SIX.has(L));
+// Tách số công đoạn: "2;6" / "2,6" / "2.6" -> [2, 6]
+const bdSteps = (v) => { const a = []; String(v == null ? '' : v).split(/[;,.]/).forEach(p => { const n = parseInt(p.trim(), 10); if (n > 0) a.push(n); }); return a; };
+
+// Công đoạn trước / sau của 1 chi tiết
+function bdProc(r) {
+  const own = [];
+  BD_PROC6.forEach(([L, label]) => bdSteps(cell(r, L)).forEach(n => own.push({ label, n })));
+  if (!own.length) return { before: '', after: '' };
+  const find = (n) => BD_OTHERS.filter(([L]) => bdSteps(cell(r, L)).includes(n)).map(x => x[1]).join(' / ');
+  const min = Math.min(...own.map(s => s.n)), max = Math.max(...own.map(s => s.n));
+  const before = min === 1
+    ? Array.from(new Set(own.filter(s => s.n === 1).map(s => s.label))).join(' / ')   // xưởng có công đoạn 1 -> lấy luôn tên cột đó
+    : find(min - 1);                                                                   // không thì lấy (số nhỏ nhất - 1) ở các cột còn lại
+  const after = find(max + 1);                                                         // (số lớn nhất + 1) ở các cột còn lại
+  return { before, after };
+}
+
+// Thứ tự cột như hình 2. g(r, x): x = { khgh, p: { before, after } }
+const BD_COLS = [
+  { h: 'KHGH', w: 100, ctr: 1, g: (r, x) => x.khgh },
+  { h: 'LSX', w: 120, ctr: 1, key: 1, g: r => cell(r, 'A') },
+  { h: 'Sản phẩm', w: 150, wr: 1, g: r => cell(r, 'D') },
+  { h: 'STT', w: 60, ctr: 1, g: r => cell(r, 'B') },
+  { h: 'MSCT', w: 130, g: r => cell(r, 'Q') },
+  { h: 'Tên chi tiết', w: 230, wr: 1, g: r => cell(r, 'R') },
+  { h: 'Vật liệu', w: 90, ctr: 1, g: r => cell(r, 'U') },
+  { h: 'Dài', grp: 'q', w: 70, ctr: 1, g: r => cell(r, 'AB') },
+  { h: 'Rộng', grp: 'q', w: 70, ctr: 1, g: r => cell(r, 'AC') },
+  { h: 'Dày', grp: 'q', w: 70, ctr: 1, g: r => cell(r, 'AD') },
+  { h: 'Hình/hộp', grp: 'q', w: 90, ctr: 1, g: r => cell(r, 'AE') },
+  { h: 'Dn', grp: 'q', w: 70, ctr: 1, g: r => cell(r, 'AF') },
+  { h: 'Dt', grp: 'q', w: 70, ctr: 1, g: r => cell(r, 'AG') },
+  { h: 'SL/bộ', w: 70, ctr: 1, g: r => cell(r, 'AI') },
+  { h: 'SL/ĐH', w: 70, ctr: 1, key: 1, g: r => cell(r, 'AJ') },
+  { h: 'Khối lượng', w: 90, ctr: 1, g: r => cell(r, 'AK') },          // AK = KL/CT. Muốn lấy KL/bộ đổi thành 'AL', KL/ĐH đổi thành 'AM'
+  { h: 'Công đoạn trước', w: 130, ctr: 1, g: (r, x) => x.p.before },
+  ...BD_PROC6.map(([L, label]) => ({ h: label, grp: 'x', w: 70, ctr: 1, g: r => cell(r, L) })),
+  { h: 'Công đoạn sau', w: 130, ctr: 1, g: (r, x) => x.p.after },
+  { h: 'Ghi chú ĐMVT', w: 260, wr: 1, g: r => cell(r, 'EZ') },
+];
+const BD_GROUPS = { q: 'QUY CÁCH CHI TIẾT (mm)', x: 'XƯỞNG GIA CÔNG CẮT GỌT' };
+
+function BomDonHang({ active }) {
+  const lsxList = useLsxList(active);
+  const [input, setInput] = useState('');
+  const [lsx, setLsx] = useState('');
+  const [rows, setRows] = useState([]);
+  const [pkh, setPkh] = useState({});
+  const [loading, setLoading] = useState(false);
+  const [quick, setQuick] = useState('');
+  const [copied, setCopied] = useState(false);
+  const tblRef = useRef(null);
+
+  const load = async (value) => {
+    const v = (value || '').trim();
+    if (!v) { setRows([]); return; }
+    setLoading(true);
+    try {
+      let data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', v).order('sheet_row'));
+      if (!data.length) data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').ilike('col_a', `%${v}%`).order('sheet_row'));
+      setRows(data);
+      // KHGH = Ngày hoàn thành trong bảng LSX_PKH (cùng nguồn với ô KH GH của tab In đơn hàng)
+      try {
+        const keys = Array.from(new Set(data.map(d => String(d.col_a || '').trim()).filter(Boolean)));
+        const m = {};
+        if (keys.length) {
+          const { data: p, error } = await supabase.from(TB_PKH).select('lsx, ngay_hoan_thanh').in('lsx', keys);
+          if (error) throw error;
+          (p || []).forEach(x => { const k = normKey(x.lsx); if (!m[k]) m[k] = x.ngay_hoan_thanh ? String(x.ngay_hoan_thanh) : ''; });
+        }
+        setPkh(m);
+      } catch (e2) { console.error('LSX_PKH:', e2); setPkh({}); }
+    } catch (e) { alert('Lỗi tải dữ liệu: ' + e.message); }
+    setLoading(false);
+  };
+  const search = () => { const v = input.trim(); if (!v) return; setLsx(v); load(v); };
+  useEffect(() => { if (active && lsx) load(lsx); }, [active]);      // quay lại tab thì tải lại dữ liệu mới nhất
+
+  const data = useMemo(() => rows.map(r => {
+    const x = { khgh: pkh[normKey(cell(r, 'A'))] || '', p: bdProc(r) };
+    return BD_COLS.map(c => String(c.g(r, x) == null ? '' : c.g(r, x)));
+  }), [rows, pkh]);
+  const shown = useMemo(() => {
+    const s = quick.trim().toLowerCase();
+    return s ? data.filter(a => a.some(v => v.toLowerCase().includes(s))) : data;
+  }, [data, quick]);
+
+  // Sao chép cả bảng (có tiêu đề) -> dán thẳng vào Excel / Google Sheet
+  const copyAll = async () => {
+    const text = [BD_COLS.map(c => c.h).join('\t')].concat(shown.map(a => a.map(tsvQ).join('\t'))).join('\n');
+    try { await navigator.clipboard.writeText(text); }
+    catch (e) { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+    setCopied(true); setTimeout(() => setCopied(false), 1800);
+  };
+  // Bôi đen toàn bộ bảng (rồi Ctrl+C)
+  const selectTable = () => {
+    const s = window.getSelection(), rg = document.createRange();
+    rg.selectNode(tblRef.current); s.removeAllRanges(); s.addRange(rg);
+  };
+
+  const nGrp = (g) => BD_COLS.filter(c => c.grp === g).length;
+
+  return (
+    <div className="space-y-3">
+      <div className="card p-3 flex flex-wrap items-center gap-3">
+        <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
+        <input list="lsx-bd-list" value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && search()}
+          placeholder="Nhập lệnh sản xuất rồi nhấn Enter…" className="inp" style={{ width: 260 }} />
+        <datalist id="lsx-bd-list">{lsxList.map(l => <option key={l} value={l} />)}</datalist>
+        <button className="btn btn-primary" onClick={search}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
+        <button className="btn" onClick={() => load(lsx)} disabled={!lsx}><i className="fa-solid fa-rotate"></i> Làm mới</button>
+        <input value={quick} onChange={e => setQuick(e.target.value)} placeholder="Lọc nhanh trong bảng…" className="inp" style={{ width: 200 }} />
+        <span className="text-xs text-slate-500">{lsx ? shown.length + ' / ' + data.length + ' chi tiết' : ''}</span>
+        <button className="btn ml-auto" onClick={selectTable} disabled={!shown.length}><i className="fa-solid fa-object-group"></i> Chọn cả bảng</button>
+        <button className="btn btn-green" onClick={copyAll} disabled={!shown.length}>
+          <i className={'fa-solid ' + (copied ? 'fa-check' : 'fa-copy')}></i> {copied ? 'Đã sao chép' : 'Sao chép bảng'}
+        </button>
+      </div>
+
+      <div className="card overflow-auto" style={{ maxHeight: 'calc(100vh - 230px)' }}>
+        <table className="erp bd" ref={tblRef}>
+          <thead>
+            <tr>
+              {BD_COLS.map((c, i) => {
+                if (c.grp) {
+                  if (BD_COLS.findIndex(z => z.grp === c.grp) !== i) return null;
+                  return <th key={i} colSpan={nGrp(c.grp)}>{BD_GROUPS[c.grp]}</th>;
+                }
+                return <th key={i} rowSpan={2} style={{ minWidth: c.w }}>{c.h}</th>;
+              })}
+            </tr>
+            <tr className="sub">
+              {BD_COLS.filter(c => c.grp).map((c, i) => <th key={i} style={{ minWidth: c.w }}>{c.h}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan={BD_COLS.length} className="text-center py-8 text-gray-400">Đang tải…</td></tr>
+            ) : !lsx ? (
+              <tr><td colSpan={BD_COLS.length} className="text-center py-8 text-gray-400">Nhập lệnh sản xuất rồi nhấn Enter để xem BOM đơn hàng.</td></tr>
+            ) : shown.length === 0 ? (
+              <tr><td colSpan={BD_COLS.length} className="text-center py-8 text-gray-400">Không tìm thấy dữ liệu.</td></tr>
+            ) : shown.map((a, ri) => (
+              <tr key={ri}>
+                {a.map((v, ci) => {
+                  const c = BD_COLS[ci];
+                  return <td key={ci} className={(c.key ? 'key ' : '') + (c.ctr ? 'ctr ' : '') + (c.wr ? 'wr' : '')}>{v}</td>;
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -2222,7 +2402,8 @@ const MENU = [
   { group: 'Đơn hàng', icon: 'fa-clipboard-list', items: [
     { id: 'indonhang', name: 'In đơn hàng', icon: 'fa-print' },
     { id: 'kanban', name: 'Kanban', icon: 'fa-tags', badge: 'kanban' },
-    { id: 'bomkanban', name: 'BOM Kanban', icon: 'fa-table-cells' } ] },
+    { id: 'bomkanban', name: 'BOM Kanban', icon: 'fa-table-cells' },
+    { id: 'bomdonhang', name: 'BOM Đơn hàng', icon: 'fa-list-check' } ] },
   { group: 'Hệ thống', icon: 'fa-gear', items: [
     { id: 'phanquyen', name: 'Phân quyền', icon: 'fa-user-shield' } ] },
 ];
@@ -2302,7 +2483,8 @@ function MainApp() {
           {currentPage === 'bom' && <Bom />}
           {visited.indonhang && <div style={{ display: currentPage === 'indonhang' ? 'block' : 'none' }}><InDonHang /></div>}
           {visited.kanban && <div style={{ display: currentPage === 'kanban' ? 'block' : 'none' }}><Kanban active={currentPage === 'kanban'} /></div>}
-          {visited.bomkanban && <div style={{ display: currentPage === 'bomkanban' ? 'block' : 'none' }}><BomKanban /></div>}
+          {visited.bomkanban && <div style={{ display: currentPage === 'bomkanban' ? 'block' : 'none' }}><BomKanban active={currentPage === 'bomkanban'} /></div>}
+          {visited.bomdonhang && <div style={{ display: currentPage === 'bomdonhang' ? 'block' : 'none' }}><BomDonHang active={currentPage === 'bomdonhang'} /></div>}
           {currentPage === 'phanquyen' && <PhanQuyen />}
         </main>
       </div>
