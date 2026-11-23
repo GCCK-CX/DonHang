@@ -2119,7 +2119,7 @@ function BomKanban({ active }) {
         <p className="text-xs text-gray-400 px-1">
           {mode === 'edit'
             ? 'Kéo chuột qua các ô để chọn vùng (Ctrl+D điền xuống · Ctrl+R điền sang phải) · gõ hoặc F2/nhấp đúp để sửa · Ctrl+C / V · Ctrl+Z hoàn tác · Delete xoá vùng · Chọn DÒNG: bấm hoặc kéo ở cột số thứ tự bên trái (đỏ nhạt).'
-            :             : 'Các dòng xám ở trên là lệnh gần đây nhất đã lưu (chỉ đọc, không lưu lại). Bấm vào cột A của dòng đầu tiên bên dưới đường kẻ xanh rồi Ctrl+V để dán lệnh mới (cột A → FA). Ctrl+D / Ctrl+R điền xuống / sang phải · Cột A (Lệnh sản xuất) và B (STT) là bắt buộc.'}
+            : 'Các dòng xám ở trên là lệnh gần đây nhất đã lưu (chỉ đọc, không lưu lại). Bấm vào cột A của dòng đầu tiên bên dưới đường kẻ xanh rồi Ctrl+V để dán lệnh mới (cột A → FA). Ctrl+D / Ctrl+R điền xuống / sang phải · Cột A (Lệnh sản xuất) và B (STT) là bắt buộc.'}
         </p>
         {busy && <div className="card p-3 text-sm text-blue-700 bg-blue-50">{busy}</div>}
         {msg && <div className={'card p-3 text-sm ' + (msg.t === 'err' ? 'text-red-700 bg-red-50' : 'text-green-700 bg-green-50')}>{msg.s}</div>}
