@@ -146,6 +146,8 @@ button, input, select, textarea { font-family: inherit; }
   table.xg tr.sel td { background:#fecaca !important; }                        /* dòng được chọn: đỏ nhạt */
   table.xg tr.sel td.rn { background:#f87171 !important; color:#fff; }
   table.xg td.act { outline:2px solid #2563eb; outline-offset:-2px; }
+  table.xg td.rg { background:#dbeafe !important; }                            /* vùng ô đang chọn (Ctrl+D / Ctrl+R) */
+  table.xg td.rg.act { background:#fff !important; }
   table.xg td.ed { padding:0; }
   .xg-in { width:100%; height:100%; border:0; outline:none; background:#fff; font:inherit; padding:0 6px; box-sizing:border-box; }
 
@@ -1442,17 +1444,17 @@ function parseTSV(text) {
 const tsvQ = (v) => /[\t\n"]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
 
 // 1 dòng của lưới (memo: cuộn / chọn chỉ vẽ lại dòng thật sự đổi)
-const XRow = React.memo(function XRow({ r, row, orig, sel, actC, ed, no, H, vis, lefts, fz, lastFz }) {
+const XRow = React.memo(function XRow({ r, row, orig, sel, actC, ed, no, H, vis, lefts, fz, lastFz, rc1, rc2 }) {
   return (
-    <tr className={sel ? 'sel' : ''}>
+    <tr className={sel ? 'sel' : ''} data-r={r}>
       <td className="rn" onMouseDown={e => H.current.down(e, r, -1)}>{no}</td>
       {vis.map(c => {
         const v = row[c];
         const editing = ed && ed.c === c;
         const frozen = c < fz;
         return (
-          <td key={c}
-              className={(orig && orig[c] !== v ? 'dirty ' : '') + (actC === c ? 'act ' : '') + (editing ? 'ed ' : '') + (frozen ? 'fz ' : '') + (c === lastFz ? 'fz-last' : '')}
+          <td key={c} data-c={c}
+              className={(orig && orig[c] !== v ? 'dirty ' : '') + (actC === c ? 'act ' : '') + (editing ? 'ed ' : '') + (frozen ? 'fz ' : '') + (c === lastFz ? 'fz-last ' : '') + (rc1 >= 0 && c >= rc1 && c <= rc2 ? 'rg' : '')}
               style={frozen ? { left: lefts[c] } : undefined}
               onMouseDown={e => H.current.down(e, r, c)} onDoubleClick={() => H.current.edit(r, c, false)}>
             {editing
@@ -1474,6 +1476,7 @@ function SheetGrid({ store, onChange, canAdd }) {
   const [scrollTop, setScrollTop] = useState(0);
   const [vh, setVh] = useState(600);
   const [act, setAct] = useState({ r: 0, c: 0 });
+  const [anc, setAnc] = useState({ r: 0, c: 0 });       // điểm neo của vùng chọn (act = ô đang trỏ)
   const [ed, setEd] = useState(null);
   const [drag, setDrag] = useState(null);
   const edRef = useRef(null), dragRef = useRef(null), H = useRef({});
@@ -1494,6 +1497,10 @@ function SheetGrid({ store, onChange, canAdd }) {
   const frozenW = lastFz >= 0 ? lefts[lastFz] + BK_COLW[lastFz] : BK_RNW;
   const colStep = (c, d) => { let x = c + d; while (x >= 0 && x < BK_N && hid.has(x)) x += d; return (x < 0 || x >= BK_N) ? c : x; };
   const fixCol = (c) => hid.has(c) ? (vis.find(x => x > c) ?? vis[vis.length - 1]) : c;
+  // Vùng ô đang chọn: từ điểm neo đến ô đang trỏ
+  const R1 = Math.max(0, Math.min(anc.r, act.r)), R2 = Math.min(Math.max(0, n - 1), Math.max(anc.r, act.r));
+  const C1 = Math.min(anc.c, act.c), C2 = Math.max(anc.c, act.c);
+  const multi = R1 !== R2 || C1 !== C2;
 
   useEffect(() => {
     const el = boxRef.current; if (!el) return;
@@ -1529,6 +1536,43 @@ function SheetGrid({ store, onChange, canAdd }) {
     onChange();
   };
 
+    // ---------- Ctrl+D / Ctrl+R / Delete trên vùng ô đang chọn ----------
+  const fillDown = () => {
+    const cs = vis.filter(c => c >= C1 && c <= C2); if (!cs.length) return;
+    let src, from, to;
+    if (R1 === R2) { if (R1 === 0) return; src = R1 - 1; from = R1; to = R1; }     // 1 dòng: chép từ ô phía trên
+    else { src = R1; from = R1 + 1; to = R2; }                                      // nhiều dòng: chép dòng trên cùng xuống
+    const map = new Map();
+    for (let r = from; r <= to; r++) {
+      const row = store.data[r].slice(); let ch = false;
+      cs.forEach(c => { const v = store.data[src][c]; if (row[c] !== v) { row[c] = v; ch = true; } });
+      if (ch) map.set(r, row);
+    }
+    if (map.size) applyRows(map);
+  };
+  const fillRight = () => {
+    const cs = vis.filter(c => c >= C1 && c <= C2); if (!cs.length) return;
+    let src, tgt;
+    if (cs.length === 1) { const p = colStep(cs[0], -1); if (p === cs[0]) return; src = p; tgt = cs; }   // 1 cột: chép từ ô bên trái
+    else { src = cs[0]; tgt = cs.slice(1); }
+    const map = new Map();
+    for (let r = R1; r <= R2; r++) {
+      const row = store.data[r].slice(); let ch = false;
+      tgt.forEach(c => { const v = store.data[r][src]; if (row[c] !== v) { row[c] = v; ch = true; } });
+      if (ch) map.set(r, row);
+    }
+    if (map.size) applyRows(map);
+  };
+  const clearRange = () => {
+    const cs = vis.filter(c => c >= C1 && c <= C2), map = new Map();
+    for (let r = R1; r <= R2; r++) {
+      const row = store.data[r].slice(); let ch = false;
+      cs.forEach(c => { if (row[c] !== '') { row[c] = ''; ch = true; } });
+      if (ch) map.set(r, row);
+    }
+    if (map.size) applyRows(map);
+  };
+
   // ---------- di chuyển ----------
   const ensureVisible = (r, c) => {
     const el = boxRef.current; if (!el) return;
@@ -1540,9 +1584,10 @@ function SheetGrid({ store, onChange, canAdd }) {
     if (left < el.scrollLeft + frozenW) el.scrollLeft = left - frozenW;
     else if (left + w > el.scrollLeft + el.clientWidth) el.scrollLeft = left + w - el.clientWidth;
   };
-  const moveTo = (r, c) => {
+  const moveTo = (r, c, extend) => {
     r = Math.max(0, Math.min(store.data.length - 1, r)); c = fixCol(Math.max(0, Math.min(BK_N - 1, c)));
-    setAct({ r, c }); ensureVisible(r, c);
+    setAct({ r, c }); if (!extend) setAnc({ r, c });
+    ensureVisible(r, c);
   };
 
   // ---------- sửa ô ----------
@@ -1572,23 +1617,40 @@ function SheetGrid({ store, onChange, canAdd }) {
     const yy = y - rect.top + el.scrollTop - headH();
     return Math.max(0, Math.min(store.data.length - 1, Math.floor(yy / BK_RH)));
   };
-  const down = (e, r, c) => {
+   const down = (e, r, c) => {
     if (e.button !== 0) return;
     const cur = edRef.current;
     if (cur && cur.r === r && cur.c === c) return;            // đang gõ trong chính ô này
     if (cur) finishEdit(true, 0, 0, false);
-    if (c >= 0) setAct({ r, c });
     boxRef.current.focus({ preventScroll: true });
-    dragRef.current = { a: r, b: r, y: e.clientY, mode: store.sel.has(r) ? 'remove' : 'add', rowNo: c < 0 };
+    if (c >= 0) {                                             // Ô: bấm = chọn ô, kéo = chọn vùng ô (dùng với Ctrl+D / Ctrl+R)
+      setAct({ r, c }); if (!e.shiftKey) setAnc({ r, c });
+      dragRef.current = { cell: true, x: e.clientX, y: e.clientY };
+    } else {                                                  // Cột số dòng: bấm / kéo = chọn dòng (đỏ nhạt)
+      dragRef.current = { a: r, b: r, x: e.clientX, y: e.clientY, mode: store.sel.has(r) ? 'remove' : 'add', rowNo: true };
+    }
     window.addEventListener('mousemove', winMove); window.addEventListener('mouseup', winUp);
     dragRef.current.timer = setInterval(() => H.current.tick(), 40);
   };
-  const move = (e) => { if (dragRef.current) dragRef.current.y = e.clientY; };
+  const move = (e) => { if (dragRef.current) { dragRef.current.x = e.clientX; dragRef.current.y = e.clientY; } };
   const tick = () => {
     const d = dragRef.current; if (!d) return;
     const el = boxRef.current, rect = el.getBoundingClientRect();
-    if (d.y > rect.bottom - 20) el.scrollTop += 30;           // kéo sát mép dưới/trên thì tự cuộn
+    if (d.y > rect.bottom - 20) el.scrollTop += 30;           // kéo sát mép thì tự cuộn
     else if (d.y < rect.top + headH() + 10) el.scrollTop -= 30;
+    if (d.cell) {
+      if (d.x > rect.right - 20) el.scrollLeft += 40;
+      else if (d.x < rect.left + frozenW + 10) el.scrollLeft -= 40;
+      const px = Math.min(Math.max(d.x, rect.left + BK_RNW + 2), rect.right - 2);
+      const py = Math.min(Math.max(d.y, rect.top + headH() + 2), rect.bottom - 2);
+      const t = document.elementFromPoint(px, py);
+      const td = t && t.closest ? t.closest('td[data-c]') : null;
+      if (td && td.parentElement && td.parentElement.dataset.r != null) {
+        const rr = Number(td.parentElement.dataset.r), cc = Number(td.dataset.c);
+        setAct(p => (p.r === rr && p.c === cc) ? p : { r: rr, c: cc });
+      }
+      return;
+    }
     const b = rowAt(d.y);
     if (b !== d.b) { d.b = b; setDrag({ a: d.a, b, mode: d.mode }); }
   };
@@ -1596,12 +1658,13 @@ function SheetGrid({ store, onChange, canAdd }) {
     const d = dragRef.current; if (!d) return;
     clearInterval(d.timer); dragRef.current = null;
     window.removeEventListener('mousemove', winMove); window.removeEventListener('mouseup', winUp);
+    if (d.cell) return;                                       // kéo chọn ô: xong, giữ nguyên vùng
     setDrag(null);
     if (d.a !== d.b) {                                        // kéo qua nhiều dòng: chọn (hoặc bỏ chọn nếu bắt đầu từ dòng đang chọn)
       const lo = Math.min(d.a, d.b), hi = Math.max(d.a, d.b);
       for (let r = lo; r <= hi; r++) { if (d.mode === 'add') store.sel.add(r); else store.sel.delete(r); }
       onChange();
-    } else if (d.rowNo) {                                     // bấm số dòng: đảo chọn 1 dòng
+    } else {                                                  // bấm số dòng: đảo chọn 1 dòng
       if (store.sel.has(d.a)) store.sel.delete(d.a); else store.sel.add(d.a);
       onChange();
     }
@@ -1633,33 +1696,43 @@ function SheetGrid({ store, onChange, canAdd }) {
   };
 
   // ---------- bàn phím / clipboard ----------
-  const onKey = (e) => {
+   const onKey = (e) => {
     if (e.target.tagName === 'INPUT' || !n) return;
-    if (e.ctrlKey || e.metaKey) { if (e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); } return; }
+    if (e.ctrlKey || e.metaKey) {
+      const k = e.key.toLowerCase();
+      if (k === 'z') { e.preventDefault(); undo(); }
+      else if (k === 'd') { e.preventDefault(); fillDown(); }     // Ctrl+D: điền xuống
+      else if (k === 'r') { e.preventDefault(); fillRight(); }    // Ctrl+R: điền sang phải
+      return;                                                     // Ctrl+C / Ctrl+V do onCopy / onPaste xử lý
+    }
     const r = act.r, c = fixCol(act.c);
-    const go = (nr, nc) => { e.preventDefault(); moveTo(nr, nc); };
+    const go = (nr, nc, ext) => { e.preventDefault(); moveTo(nr, nc, ext); };
     switch (e.key) {
-      case 'ArrowDown': return go(r + 1, c);
-      case 'ArrowUp': return go(r - 1, c);
-      case 'ArrowLeft': return go(r, colStep(c, -1));
-      case 'ArrowRight': return go(r, colStep(c, 1));
+      case 'ArrowDown': return go(r + 1, c, e.shiftKey);
+      case 'ArrowUp': return go(r - 1, c, e.shiftKey);
+      case 'ArrowLeft': return go(r, colStep(c, -1), e.shiftKey);
+      case 'ArrowRight': return go(r, colStep(c, 1), e.shiftKey);
       case 'Tab': return go(r, colStep(c, e.shiftKey ? -1 : 1));
-      case 'PageDown': return go(r + 15, c);
-      case 'PageUp': return go(r - 15, c);
-      case 'Home': return go(r, vis[0]);
-      case 'End': return go(r, vis[vis.length - 1]);
+      case 'PageDown': return go(r + 15, c, e.shiftKey);
+      case 'PageUp': return go(r - 15, c, e.shiftKey);
+      case 'Home': return go(r, vis[0], e.shiftKey);
+      case 'End': return go(r, vis[vis.length - 1], e.shiftKey);
       case 'Enter': case 'F2': e.preventDefault(); return startEdit(r, c, false);
-      case 'Delete': case 'Backspace': e.preventDefault(); return setCell(r, c, '');
-      case 'Escape': if (store.sel.size) { store.sel.clear(); onChange(); } return;
+      case 'Delete': case 'Backspace': e.preventDefault(); return clearRange();
+      case 'Escape': if (store.sel.size) { store.sel.clear(); onChange(); } setAnc({ r: act.r, c: act.c }); return;
       default:
         if (e.key.length === 1 || e.key === 'Process' || e.key === 'Unidentified') startEdit(r, c, true);   // gõ thẳng để thay nội dung ô
     }
   };
   const onCopy = (e) => {
     if (e.target.tagName === 'INPUT' || !n) return;
-    const text = store.sel.size
-      ? Array.from(store.sel).sort((a, b) => a - b).map(r => store.data[r].map(tsvQ).join('\t')).join('\n')
-      : tsvQ(store.data[act.r][act.c]);
+    let text;
+    if (store.sel.size) text = Array.from(store.sel).sort((a, b) => a - b).map(r => store.data[r].map(tsvQ).join('\t')).join('\n');
+    else {                                                    // chép cả vùng ô đang chọn
+      const cs = vis.filter(c => c >= C1 && c <= C2), lines = [];
+      for (let r = R1; r <= R2; r++) lines.push(cs.map(c => tsvQ(store.data[r][c])).join('\t'));
+      text = lines.join('\n');
+    }
     e.clipboardData.setData('text/plain', text); e.preventDefault();
   };
   const onPaste = (e) => {
@@ -1667,7 +1740,7 @@ function SheetGrid({ store, onChange, canAdd }) {
     e.preventDefault();
     const text = e.clipboardData.getData('text'); if (!text || !n) return;
     // Dán theo vị trí cột THẬT (A, B, C…): cột đang ẩn vẫn nhận dữ liệu như trên Google Sheet
-    const m = parseTSV(text), r0 = act.r, c0 = fixCol(act.c);
+    const m = parseTSV(text), r0 = R1, c0 = fixCol(C1);
     let skipped = 0;
     const need = r0 + m.length - store.data.length;
     if (need > 0) { if (canAdd) { for (let k = 0; k < need; k++) store.data.push(blankRow()); } else skipped = need; }
@@ -1724,7 +1797,8 @@ function SheetGrid({ store, onChange, canAdd }) {
             return <XRow key={r} r={r} row={store.data[r]} orig={store.orig ? store.orig[r] : null} sel={isSel(r)}
                          actC={act.r === r ? act.c : -1} ed={ed && ed.r === r ? ed : null}
                          no={store.nums.length ? store.nums[r] : r + 1} H={H}
-                         vis={vis} lefts={lefts} fz={fz} lastFz={lastFz} />;
+                         vis={vis} lefts={lefts} fz={fz} lastFz={lastFz}
+                         rc1={multi && r >= R1 && r <= R2 ? C1 : -1} rc2={multi && r >= R1 && r <= R2 ? C2 : -1} />;
           })}
           {last < n && <tr><td colSpan={vis.length + 1} style={{ height: (n - last) * BK_RH, padding: 0, border: 0 }}></td></tr>}
         </tbody>
@@ -1808,7 +1882,8 @@ function BomKanban() {
   const [lastInfo, setLastInfo] = useState(null);
   const refreshLast = async () => {
     try {
-      const { data, error } = await supabase.from(TB_KANBAN).select('col_a, col_b').order('id', { ascending: false }).limit(1);
+      const { data, error } = await supabase.from(TB_KANBAN).select('col_a, col_b')
+        .order('sheet_row', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).limit(1);
       if (error) throw error;
       setLastInfo(data && data[0] ? { lsx: data[0].col_a, stt: data[0].col_b } : null);
     } catch (e) { console.error(e); }
@@ -1974,11 +2049,11 @@ function BomKanban() {
     setBusy('Đang tải 5 dòng cuối…'); setMsg(null);
     try {
       const { data, error } = await supabase.from(TB_KANBAN).select('*')
-        .order('id', { ascending: false }).limit(5);
+        .order('sheet_row', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).limit(5);
       if (error) throw error;
       const arr = data.reverse().map(d => BK_LETTERS.map(L => { const x = d['col_' + L.toLowerCase()]; return x == null ? '' : String(x); }));
       I.data = arr.concat(Array.from({ length: 25 }, blankRow)); I.sel = new Set(); I.undo = [];
-      setGk(k => k + 1); ok('✔ Đã đưa ' + arr.length + ' dòng cuối cùng của Supabase lên bảng.');
+      setGk(k => k + 1); ok('✔ Đã đưa ' + arr.length + ' dòng cuối cùng (đúng thứ tự dưới Google Sheet) lên bảng.');
     } catch (e) { bad('Không tải được: ' + (e.message || e)); }
     setBusy('');
   };
@@ -2027,8 +2102,8 @@ function BomKanban() {
         </div>
         <p className="text-xs text-gray-400 px-1">
           {mode === 'edit'
-            ? 'Click ô để chọn · gõ hoặc F2/nhấp đúp để sửa · Ctrl+C / Ctrl+V · Ctrl+Z hoàn tác · Delete xoá ô · Kéo chuột qua nhiều dòng để chọn (đỏ nhạt), kéo lại lần nữa để bỏ chọn.'
-            : 'Chọn ô A1 rồi Ctrl+V để dán dữ liệu từ Excel / Google Sheet (cột A → FA). Dòng nào có dữ liệu sẽ được thêm mới; cột A (Lệnh sản xuất) là bắt buộc.'}
+            ? 'Kéo chuột qua các ô để chọn vùng (Ctrl+D điền xuống · Ctrl+R điền sang phải) · gõ hoặc F2/nhấp đúp để sửa · Ctrl+C / V · Ctrl+Z hoàn tác · Delete xoá vùng · Chọn DÒNG: bấm hoặc kéo ở cột số thứ tự bên trái (đỏ nhạt).'
+            : 'Chọn ô A1 rồi Ctrl+V để dán từ Excel / Google Sheet (cột A → FA). Ctrl+D / Ctrl+R điền xuống / sang phải trên vùng ô đang kéo chọn · chọn DÒNG ở cột số thứ tự bên trái. Cột A (Lệnh sản xuất) và B (STT) là bắt buộc.'}
         </p>
         {busy && <div className="card p-3 text-sm text-blue-700 bg-blue-50">{busy}</div>}
         {msg && <div className={'card p-3 text-sm ' + (msg.t === 'err' ? 'text-red-700 bg-red-50' : 'text-green-700 bg-green-50')}>{msg.s}</div>}
