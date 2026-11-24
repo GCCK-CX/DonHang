@@ -222,6 +222,27 @@ button, input, select, textarea { font-family: inherit; }
   .bd-rs { position:absolute; top:0; bottom:0; right:0; width:8px; cursor:col-resize; z-index:4; }
   .bd-rs:hover, .bd-rs:active { background:rgba(253,224,71,.85); }
 
+    /* ---------- Thông báo dạng modal nhỏ giữa màn hình ---------- */
+  .toast-layer { position:fixed; inset:0; z-index:200; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; pointer-events:none; }
+  .toast { pointer-events:auto; position:relative; overflow:hidden; width:min(390px,90vw); display:flex; gap:14px; align-items:flex-start;
+           padding:16px 38px 19px 16px; border-radius:18px; background:rgba(255,255,255,.8);
+           -webkit-backdrop-filter:blur(16px) saturate(1.5); backdrop-filter:blur(16px) saturate(1.5);
+           border:1px solid rgba(255,255,255,.75); box-shadow:0 22px 55px rgba(15,23,42,.28), 0 0 0 1px rgba(15,23,42,.05);
+           animation:toastIn .24s cubic-bezier(.2,.9,.3,1.15); --tc:#2563eb; }
+  .toast.out { animation:toastOut .2s ease-in forwards; }
+  .toast.success { --tc:#16a34a; } .toast.error { --tc:#dc2626; } .toast.warn { --tc:#d97706; }
+  .toast-ico { flex:0 0 40px; width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px;
+               color:var(--tc); background:color-mix(in srgb, var(--tc) 14%, white); box-shadow:0 0 0 6px color-mix(in srgb, var(--tc) 8%, transparent); }
+  .toast-t { font-size:14.5px; font-weight:800; color:#0f172a; line-height:1.3; }
+  .toast-m { margin-top:3px; font-size:12.5px; color:#475569; line-height:1.5; white-space:pre-line; word-break:break-word; }
+  .toast-x { position:absolute; top:9px; right:11px; border:0; background:none; color:#94a3b8; cursor:pointer; font-size:13px; padding:4px; }
+  .toast-x:hover { color:#0f172a; }
+  .toast-bar { position:absolute; left:0; bottom:0; height:3px; width:100%; background:var(--tc); opacity:.75; transform-origin:left; animation:toastBar linear forwards; }
+  @keyframes toastIn { from { opacity:0; transform:translateY(14px) scale(.94); } to { opacity:1; transform:none; } }
+  @keyframes toastOut { to { opacity:0; transform:translateY(-8px) scale(.96); } }
+  @keyframes toastBar { from { transform:scaleX(1); } to { transform:scaleX(0); } }
+  @media print { .toast-layer { display:none !important; } }
+
   @media print {
     @page { size: A4 landscape; margin: 8mm; }
     .no-print { display:none !important; }
@@ -386,6 +407,54 @@ const picked = (e, list) => {
   if (t) return false;                              // đang gõ tay
   return list.includes(e.target.value);             // trình duyệt không báo inputType
 };
+
+// ---------- Thông báo toàn cục: notify('success' | 'error' | 'warn' | 'info', tiêu đề, nội dung, [ms]) ----------
+function notify(type, title, message, ms) {
+  window.dispatchEvent(new CustomEvent('app-toast', { detail: { type, title, message, ms } }));
+}
+// alert() cũ của trình duyệt -> tự chuyển sang modal mới
+window.alert = function (m) {
+  const s = String(m == null ? '' : m);
+  if (/lỗi|thất bại/i.test(s)) notify('error', 'Có lỗi xảy ra', s);
+  else if (/thành công|hoàn tất|^đã /i.test(s)) notify('success', 'Hoàn tất', s);
+  else notify('warn', 'Lưu ý', s);
+};
+
+const TOAST_ICO = { success: 'fa-circle-check', error: 'fa-circle-xmark', warn: 'fa-triangle-exclamation', info: 'fa-circle-info' };
+function ToastHost() {
+  const [items, setItems] = useState([]);
+  const idRef = useRef(0);
+  const close = (id) => {
+    setItems(p => p.map(t => t.id === id ? { ...t, out: true } : t));
+    setTimeout(() => setItems(p => p.filter(t => t.id !== id)), 200);
+  };
+  useEffect(() => {
+    const h = (e) => {
+      const d = e.detail || {}, id = ++idRef.current, type = d.type || 'info';
+      const ms = d.ms || (type === 'error' ? 10000 : type === 'warn' ? 6000 : 3800);
+      setItems(p => p.slice(-3).concat({ id, type, ms, title: d.title, message: d.message }));
+      setTimeout(() => close(id), ms);
+    };
+    window.addEventListener('app-toast', h);
+    return () => window.removeEventListener('app-toast', h);
+  }, []);
+  if (!items.length) return null;
+  return (
+    <div className="toast-layer no-print">
+      {items.map(t => (
+        <div key={t.id} className={'toast ' + t.type + (t.out ? ' out' : '')} role="status">
+          <div className="toast-ico"><i className={'fa-solid ' + TOAST_ICO[t.type]}></i></div>
+          <div style={{ minWidth: 0 }}>
+            <div className="toast-t">{t.title}</div>
+            {t.message && <div className="toast-m">{t.message}</div>}
+          </div>
+          <button className="toast-x" onClick={() => close(t.id)} title="Đóng"><i className="fa-solid fa-xmark"></i></button>
+          <span className="toast-bar" style={{ animationDuration: t.ms + 'ms' }}></span>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function Logo({ collapsed }) {
   const [err, setErr] = useState(false);
@@ -869,8 +938,7 @@ function InDonHang() {
         <button onClick={() => search()} className="btn btn-primary"><i className="fa-solid fa-magnifying-glass"></i> Tìm kiếm</button>
         <span className="text-xs font-bold text-slate-500 ml-3">KH GH</span>
         <input value={khgh} onChange={e => setKhgh(e.target.value)} placeholder="Ngày/kế hoạch giao hàng" className="inp" style={{ width: 200 }} />
-        <button onClick={() => setColW(DM_W)} className="btn ml-auto" title="Trả độ rộng các cột về mặc định"><i className="fa-solid fa-arrows-left-right"></i> Đặt lại cột</button>
-        <button onClick={() => window.print()} disabled={!rows.length} className="btn btn-green" style={{ opacity: rows.length ? 1 : .5 }}>
+        <button onClick={() => window.print()} disabled={!rows.length} className="btn btn-green ml-auto" style={{ opacity: rows.length ? 1 : .5 }}>
           <i className="fa-solid fa-print"></i> In đơn hàng
         </button>
       </div>
@@ -1458,6 +1526,21 @@ const BK_LEFT = []; (() => { let x = BK_RNW; BK_COLW.forEach(w => { BK_LEFT.push
 const BK_TOTALW = BK_RNW + BK_COLW.reduce((a, b) => a + b, 0);
 const blankRow = () => new Array(BK_N).fill('');
 // freeze = số cột đầu bị cố định (2 = A,B) · hidden = các cột đang ẩn (chỉ ẩn hiển thị, dữ liệu vẫn nằm trong ô) · hver = số phiên bản để tính lại
+
+const BK_HID_KEY = 'bk_hidden_v1', BK_FRZ_KEY = 'bk_freeze_v1';
+const loadHidden = () => {
+  try {
+    const a = JSON.parse(localStorage.getItem(BK_HID_KEY));
+    if (Array.isArray(a)) { const s = new Set(a.filter(i => Number.isInteger(i) && i >= 0 && i < BK_N)); if (s.size < BK_N) return s; }
+  } catch (e) {}
+  return new Set();
+};
+const loadFreeze = () => {
+  try { const n = Number(localStorage.getItem(BK_FRZ_KEY)); if (localStorage.getItem(BK_FRZ_KEY) != null && n >= 0 && n < BK_N) return n; } catch (e) {}
+  return 2;
+};
+const saveBkView = (s) => { try { localStorage.setItem(BK_HID_KEY, JSON.stringify(Array.from(s.hidden))); localStorage.setItem(BK_FRZ_KEY, String(s.freeze)); } catch (e) {} };
+
 const newBkStore = () => ({ data: [], orig: null, ids: [], nums: [], sel: new Set(), dirty: new Set(), undo: [], loaded: '', freeze: 2, hidden: new Set(), hver: 0 });
 
 // ---- Kết nối Google Apps Script (xoá / ghi Sheet) ----
@@ -1734,7 +1817,7 @@ function SheetGrid({ store, onChange, canAdd }) {
         if (d < bd) { bd = d; best = c; }
       }
       const nf = best + 1;
-      if (nf !== store.freeze) { store.freeze = nf; onChange(); }
+      if (nf !== store.freeze) { store.freeze = nf; if (store.persist) saveBkView(store); onChange(); }
     };
     const upF = () => {
       window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', upF);
@@ -1874,7 +1957,7 @@ function ColPickPop({ store, pos, onChange, onClose }) {
   const hid = store.hidden;
   const items = BK_LETTERS.map((L, i) => ({ i, L, h: BK_HEAD[i] }))
     .filter(x => (x.L + ' ' + x.h).toLowerCase().includes(q.trim().toLowerCase()));
-  const commit = () => { store.hver = (store.hver || 0) + 1; onChange(); };
+  const commit = () => { store.hver = (store.hver || 0) + 1; if (store.persist) saveBkView(store); onChange(); };
   const toggle = (i) => { if (hid.has(i)) hid.delete(i); else { if (hid.size >= BK_N - 1) return; hid.add(i); } commit(); };
   const showAll = () => { hid.clear(); commit(); };
   const hideShown = () => { items.forEach(x => { if (hid.size < BK_N - 1) hid.add(x.i); }); commit(); };
@@ -1924,7 +2007,11 @@ function BomKanban({ active }) {
   const [, bump] = useState(0);
   const re = () => bump(x => x + 1);
   const eRef = useRef(null); if (!eRef.current) eRef.current = newBkStore();
-  const iRef = useRef(null); if (!iRef.current) { iRef.current = newBkStore(); iRef.current.data = Array.from({ length: 30 }, blankRow); }
+  const iRef = useRef(null);
+  if (!iRef.current) {
+    iRef.current = newBkStore(); iRef.current.data = Array.from({ length: 30 }, blankRow);
+    iRef.current.hidden = loadHidden(); iRef.current.freeze = loadFreeze(); iRef.current.persist = true;   // chỉ bảng Up BOM nhớ cấu hình cột
+  }
   const E = eRef.current, I = iRef.current;
   const lsxList = useLsxList(active);
   const busyRef = useRef(''); busyRef.current = busy;
@@ -1941,7 +2028,8 @@ function BomKanban({ active }) {
     const h = (e) => { if (e.key === 'Escape') closeDlg(false); };
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, [dlg]);
-  const ok = (s) => setMsg({ t: 'ok', s }), bad = (s) => setMsg({ t: 'err', s });
+  const ok = (s, title) => notify('success', title || 'Hoàn tất', String(s).replace(/^✔\s*/, ''));
+  const bad = (s) => notify('error', 'Có lỗi xảy ra', s);
 
   // Nạp LỆNH GẦN ĐÂY NHẤT (toàn bộ các dòng của lệnh đó) lên bảng Up Bom.
   // I.base = số dòng đã có -> các dòng này chỉ đọc, khi lưu chỉ lưu từ dòng I.base + 1 trở đi.
@@ -1949,11 +2037,11 @@ function BomKanban({ active }) {
   const fetchLastInfo = async (force) => {
     let sb;
     try {
-      const { data, error } = await supabase.from(TB_KANBAN).select('col_a, col_b, sheet_row')
-        .order('sheet_row', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).limit(1);
+      const { data, error } = await supabase.from(TB_KANBAN).select('id, col_a, col_b, sheet_row')
+        .order('id', { ascending: false }).limit(1);
       if (error) throw error;
       const d = data && data[0];
-      sb = { lsx: d ? String(d.col_a || '').trim() : '', stt: d ? String(d.col_b || '').trim() : '', row: d ? (d.sheet_row || 0) : 0 };
+      sb = { id: d ? d.id : 0, lsx: d ? String(d.col_a || '').trim() : '', stt: d ? String(d.col_b || '').trim() : '', row: d ? (d.sheet_row || 0) : 0 };
     } catch (e) { return null; }
     if (force || Date.now() - shRef.current.at > 60000) {
       try {
@@ -1970,8 +2058,8 @@ function BomKanban({ active }) {
   const loadLatest = async (quiet) => {
     setBusy('Đang tải lệnh gần đây nhất…'); if (!quiet) setMsg(null);
     try {
-      const { data: lr, error: e1 } = await supabase.from(TB_KANBAN).select('col_a, sheet_row')
-        .order('sheet_row', { ascending: false, nullsFirst: false }).order('id', { ascending: false }).limit(1);
+      const { data: lr, error: e1 } = await supabase.from(TB_KANBAN).select('id, col_a, sheet_row')
+        .order('id', { ascending: false }).limit(1);
       if (e1) throw e1;
       const lsx = lr && lr[0] ? lr[0].col_a : '';
       let arr = [];
@@ -1981,11 +2069,12 @@ function BomKanban({ active }) {
       }
       I.data = arr.concat(Array.from({ length: 30 }, blankRow));
       I.base = arr.length; I.baseLsx = String(lsx || '').trim(); I.baseRow = lr && lr[0] ? (lr[0].sheet_row || 0) : 0;
+      I.baseId = lr && lr[0] ? (lr[0].id || 0) : 0;
       I.sel = new Set(); I.undo = [];
       setGk(k => k + 1);
       fetchLastInfo(true);
       if (!quiet) ok(arr.length ? '✔ Đã nạp lệnh gần đây nhất: ' + lsx + ' (' + arr.length + ' dòng). Hãy dán lệnh mới từ dòng ' + (arr.length + 1) + '.' : 'Chưa có lệnh nào trong Supabase.');
-    } catch (e) { bad('Không tải được: ' + (e.message || e)); }
+    } catch (e) { if (!quiet) bad('Không tải được: ' + (e.message || e)); }
     setBusy('');
   };
   // Mỗi lần bấm vào tab BOM Kanban: nếu chưa có dòng mới nào đang dán dở thì nạp lại lệnh gần nhất
@@ -1998,7 +2087,7 @@ function BomKanban({ active }) {
       if (!alive || document.hidden || busyRef.current) return;
       const info = await fetchLastInfo(false);
       if (!alive || !info || busyRef.current || importFilled().length) return;   // đang dán dở thì không đụng vào bảng
-      if (info.sb.lsx !== (I.baseLsx || '') || info.sb.row !== (I.baseRow || 0)) loadLatest(true);
+      if (info.sb.lsx !== (I.baseLsx || '') || info.sb.id !== (I.baseId || 0)) loadLatest(true);
     };
     const t = setInterval(tick, 20000);
     const vis = () => { if (!document.hidden) tick(); };
@@ -2040,6 +2129,7 @@ function BomKanban({ active }) {
         if (error) throw new Error(/lsx_key|duplicate/i.test(error.message) ? 'Trùng khoá LSX-STT với một dòng khác — hãy đổi lại LSX/STT.' : error.message);
         done += data.updated;
       }
+      notify('success', 'Đã lưu vào Supabase', done + ' dòng đã được cập nhật. Đang đồng bộ sang Google Sheet…');
       try {
         for (let s = 0; s < idx.length; s += 200) {
           setBusy('Đang đồng bộ sang Google Sheet… ' + Math.min(s + 200, idx.length) + '/' + idx.length);
@@ -2053,7 +2143,7 @@ function BomKanban({ active }) {
       }
       idx.forEach(r => { E.orig[r] = E.data[r]; }); E.dirty.clear();
       if (done < idx.length) bad('Đã lưu ' + done + '/' + idx.length + ' dòng trên Supabase. Số còn lại không tìm thấy (có thể vừa được đồng bộ lại) — hãy bấm Tìm lại.');
-      else ok('✔ Đã lưu ' + done + ' dòng vào Supabase và đồng bộ sang Google Sheet.');
+      else notify('success', 'Đã ghi Google Sheet xong', done + ' dòng đã được đồng bộ sang Google Sheet.');
       window.dispatchEvent(new Event('bk-changed'));
     } catch (e) { bad('Lưu thất bại: ' + (e.message || e)); }
     setBusy(''); re();
@@ -2073,11 +2163,13 @@ function BomKanban({ active }) {
       setBusy('Đang xoá trên Google Sheet…');                    // Sheet trước: nếu Supabase lỗi thì bấm xoá lại vẫn an toàn
       gsN = (await gs('delete', { items: idx.map(r => ({ key: bkKey(E.orig[r], E.nums[r]), row: E.nums[r] })) })).deleted;
       sheetDone = true;
+      notify('success', 'Đã xoá trên Google Sheet', gsN + ' dòng đã được xoá. Đang xoá trên Supabase…');
       setBusy('Đang xoá trên Supabase…');
       for (let s = 0; s < idx.length; s += 500) {
         const { error } = await supabase.rpc('bkx_remove', { p_ids: idx.slice(s, s + 500).map(r => E.ids[r]) });
         if (error) throw error;
       }
+      notify('success', 'Đã xoá trên Supabase', idx.length + ' dòng đã được xoá.');
       const keep = E.data.map((_, i) => i).filter(i => !E.sel.has(i));
       const oldDirty = E.dirty;
       E.data = keep.map(i => E.data[i]); E.orig = keep.map(i => E.orig[i]);
@@ -2088,7 +2180,6 @@ function BomKanban({ active }) {
       setGk(k => k + 1);
       const doneMsg = '✔ Đã xoá ' + idx.length + ' dòng trên Supabase và ' + gsN + ' dòng trên Google Sheet.';
       if (!E.dirty.size && E.loaded) await search(E.loaded);     // lấy lại số dòng Sheet mới (các dòng bên dưới đã dịch lên)
-      ok(doneMsg);
     } catch (e) {
       bad((sheetDone ? 'Đã xoá trên Google Sheet nhưng xoá Supabase lỗi: ' : 'Xoá thất bại: ') + (e.message || e) + (sheetDone ? '. Hãy bấm Xoá lần nữa để hoàn tất.' : ''));
     }
@@ -2106,7 +2197,7 @@ function BomKanban({ active }) {
     setBusy('Đang kiểm tra lệnh cuối…');
     const li = await fetchLastInfo(true);
     setBusy('');
-    if (li && (li.sb.lsx !== (I.baseLsx || '') || li.sb.row !== (I.baseRow || 0))) {
+    if (li && (li.sb.lsx !== (I.baseLsx || '') || li.sb.id !== (I.baseId || 0))) {
       const go = await ask({ danger: true, icon: 'fa-triangle-exclamation', title: 'Có lệnh mới vừa được up!',
         message: 'Lệnh cuối cùng hiện tại là ' + (li.sb.lsx || '—') + ' (dòng ' + li.sb.row + '), khác với lệnh cuối trên bảng của bạn (' + (I.baseLsx || '—') + '). Nên bấm Hủy, nạp lại lệnh gần đây nhất rồi up nối tiếp để không bị trùng.',
         confirmText: 'Vẫn lưu' });
@@ -2146,6 +2237,7 @@ function BomKanban({ active }) {
         if (error) throw error;
       }
     } catch (e) { bad('Lưu Supabase thất bại: ' + (e.message || e)); setBusy(''); return; }
+    notify('success', 'Đã lưu vào Supabase', uniq.length + ' dòng đã được ghi. Đang ghi xuống Google Sheet…');
     try {
       for (let s = 0; s < uniq.length; s += 400) {
         setBusy('Đang ghi xuống Google Sheet… ' + Math.min(s + 400, uniq.length) + '/' + uniq.length);
@@ -2160,7 +2252,7 @@ function BomKanban({ active }) {
     }
     window.dispatchEvent(new Event('bk-changed'));
     await loadLatest(true);          // bảng nạp lại = lệnh vừa lưu (nằm cuối), lệnh mới dán tiếp bên dưới
-    ok('✔ Đã lưu ' + uniq.length + ' dòng vào Supabase và nối tiếp xuống Google Sheet.');
+    notify('success', 'Đã ghi Google Sheet xong', uniq.length + ' dòng đã được nối tiếp xuống cuối Sheet.');
   };
 
     // ----- Nút "Lệnh gần đây nhất" -----
@@ -2217,7 +2309,7 @@ function BomKanban({ active }) {
                 {mode === 'import' && lastInfo && (() => {
           const { sb, sh, shErr } = lastInfo;
           const same = !!sh && sb.lsx === sh.lsx && sb.row === sh.row;
-          const stale = sb.lsx !== (I.baseLsx || '') || sb.row !== (I.baseRow || 0);
+          const stale = sb.lsx !== (I.baseLsx || '') || sb.id !== (I.baseId || 0);
           return (
             <div className="card p-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm">
               <span className="font-bold text-slate-700"><i className="fa-solid fa-flag-checkered text-blue-600 mr-1.5"></i>Lệnh cuối cùng</span>
@@ -2234,7 +2326,6 @@ function BomKanban({ active }) {
           );
         })()}
         {busy && <div className="card p-3 text-sm text-blue-700 bg-blue-50">{busy}</div>}
-        {msg && <div className={'card p-3 text-sm ' + (msg.t === 'err' ? 'text-red-700 bg-red-50' : 'text-green-700 bg-green-50')}>{msg.s}</div>}
       </div>
 
       <div style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
@@ -2329,6 +2420,8 @@ const BD_GROUPS = { q: 'QUY CÁCH CHI TIẾT (mm)', x: 'XƯỞNG GIA CÔNG CẮT
 // Độ rộng cột mặc định (px) ở cỡ chữ 20 — đúng thứ tự BD_COLS (25 cột)
 const BD_W20 = [130, 160, 300, 70, 170, 320, 110,  90, 90, 90, 120, 90, 90,  90, 90, 120,  170,  95, 95, 95, 95, 95, 95,  170,  340];
 
+const BD_W = BD_W20.map(w => Math.round(w * 1.6));   // độ rộng mặc định ở cỡ chữ 32
+
 function BomDonHang({ active }) {
   const lsxList = useLsxList(active);
   const [input, setInput] = useState('');
@@ -2346,22 +2439,13 @@ function BomDonHang({ active }) {
   const [frozenZ, setFrozenZ] = useState(null);  // đang kéo cột thì giữ nguyên tỉ lệ zoom cho khỏi "trượt"
   const boxRef = useRef(null), dragRef = useRef(false);
 
-  // ---- Cỡ chữ / độ rộng cột / chế độ vừa bề ngang (nhớ lại trong trình duyệt) ----
-  const lsRead = (k, d) => { try { const v = localStorage.getItem(k); return v == null ? d : v; } catch (e) { return d; } };
-  const [fs, setFs] = useState(() => { const n = Number(lsRead('bd_fs_v1', 20)); return n >= 12 && n <= 32 ? n : 20; });
+  // ---- Cỡ chữ cố định 32px, luôn vừa bề ngang; độ rộng cột kéo dãn được và được nhớ lại ----
+  const fs = 32;
   const [colW, setColW] = useState(() => {
-    try { const a = JSON.parse(lsRead('bd_colw_v1', 'null')); if (Array.isArray(a) && a.length === BD_COLS.length) return a; } catch (e) {}
-    return BD_W20;
+    try { const a = JSON.parse(localStorage.getItem('bd_colw_v2')); if (Array.isArray(a) && a.length === BD_COLS.length) return a; } catch (e) {}
+    return BD_W;
   });
-  const [fit, setFit] = useState(() => lsRead('bd_fit_v1', '0') === '1');
-  useEffect(() => {
-    try { localStorage.setItem('bd_fs_v1', fs); localStorage.setItem('bd_colw_v1', JSON.stringify(colW)); localStorage.setItem('bd_fit_v1', fit ? '1' : '0'); } catch (e) {}
-  }, [fs, colW, fit]);
-  const changeFs = (nf) => {
-    nf = Math.max(12, Math.min(32, nf)); if (nf === fs) return;
-    setColW(p => p.map(w => Math.round(w * nf / fs)));          // đổi cỡ chữ thì cột giãn theo cho vừa chữ
-    setFs(nf);
-  };
+  useEffect(() => { try { localStorage.setItem('bd_colw_v2', JSON.stringify(colW)); } catch (e) {} }, [colW]);
 
   // ---- Tải dữ liệu ----
   const load = async (value) => {
@@ -2400,11 +2484,10 @@ function BomDonHang({ active }) {
   }), [rows, pkh]);
   const view = useMemo(() => data.map(a => ({ v: a })), [data]);       // ColFilterPop đọc x.v[cột]
   const shown = useMemo(() => {
-    const s = quick.trim().toLowerCase();
-    let a = data.filter(r => (!s || r.some(v => v.toLowerCase().includes(s))) && Object.keys(flt).every(c => flt[c].has(r[c])));
+    let a = data.filter(r => Object.keys(flt).every(c => flt[c].has(r[c])));
     if (srt) a = a.slice().sort((p, q) => srt.dir * p[srt.c].localeCompare(q[srt.c], 'vi', { numeric: true }));
     return a;
-  }, [data, quick, flt, srt]);
+  }, [data, flt, srt]);
   const applyFlt = (c, s) => setFlt(p => { const n = { ...p }; if (s) n[c] = s; else delete n[c]; return n; });
   const nFlt = Object.keys(flt).length;
 
@@ -2417,7 +2500,7 @@ function BomDonHang({ active }) {
     const ro = new ResizeObserver(m); ro.observe(el);
     return () => ro.disconnect();
   }, []);
-  const bz0 = fit && boxW ? Math.floor(Math.min(1.4, (boxW - 4) / total) * 1000) / 1000 : 1;
+  const bz0 = boxW ? Math.floor(Math.min(1.4, (boxW - 4) / total) * 1000) / 1000 : 1;
   const bz = frozenZ || bz0;
 
   // ---- Kéo dãn cột ----
@@ -2436,7 +2519,6 @@ function BomDonHang({ active }) {
     };
     window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
   };
-  const resetCols = () => setColW(BD_W20.map(w => Math.round(w * fs / 20)));
 
   // ---- Sao chép ----
   const copyAll = async () => {
@@ -2453,7 +2535,7 @@ function BomDonHang({ active }) {
   const nGrp = (g) => BD_COLS.filter(c => c.grp === g).length;
 
   // ---- Chọn vùng ô kiểu Excel: bấm / kéo / Shift+bấm, Ctrl+A, Ctrl+C ----
-  useEffect(() => { setRng(null); }, [data, quick, flt, srt]);
+    useEffect(() => { setRng(null); }, [data, flt, srt]);
   useEffect(() => {
     const up = () => { dragRef.current = false; };
     window.addEventListener('mouseup', up);
@@ -2493,7 +2575,7 @@ function BomDonHang({ active }) {
       <i className="fa-solid fa-filter"></i>
     </button>
     <span className="bd-rs" title="Kéo để chỉnh độ rộng · nhấp đúp để đặt lại cột này" onMouseDown={e => startResize(e, i)}
-      onDoubleClick={() => setColW(p => { const a = p.slice(); a[i] = Math.round(BD_W20[i] * fs / 20); return a; })} />
+      onDoubleClick={() => setColW(p => { const a = p.slice(); a[i] = BD_W[i]; return a; })} />
   </>);
 
   return (
@@ -2507,19 +2589,10 @@ function BomDonHang({ active }) {
         <datalist id="lsx-bd-list">{lsxList.map(l => <option key={l} value={l} />)}</datalist>
         <button className="btn btn-primary" onClick={() => search()}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
         <button className="btn" onClick={() => load(lsx)} disabled={!lsx}><i className="fa-solid fa-rotate"></i> Làm mới</button>
-        <input value={quick} onChange={e => setQuick(e.target.value)} placeholder="Lọc nhanh trong bảng…" className="inp" style={{ width: 200 }} />
         <span className="text-xs text-slate-500">{lsx ? shown.length + ' / ' + data.length + ' chi tiết' : ''}</span>
         {R && <span className="text-xs font-semibold text-blue-700">Đang chọn {(R.r2 - R.r1 + 1) * (R.c2 - R.c1 + 1)} ô · Ctrl+C để sao chép</span>}
 
-        <div className="flex items-center gap-1 ml-auto" title="Cỡ chữ của bảng">
-          <button className="btn" onClick={() => changeFs(fs - 2)}>A−</button>
-          <span className="text-xs font-bold text-slate-600" style={{ minWidth: 38, textAlign: 'center' }}>{fs}px</span>
-          <button className="btn" onClick={() => changeFs(fs + 2)}>A+</button>
-        </div>
-        <button className={'btn ' + (fit ? 'btn-primary' : '')} onClick={() => setFit(f => !f)} title="Thu cả bảng vừa bề ngang màn hình (chữ sẽ nhỏ lại)">
-          <i className="fa-solid fa-maximize"></i> Vừa bề ngang
-        </button>
-        <button className="btn" onClick={resetCols} title="Trả độ rộng các cột về mặc định"><i className="fa-solid fa-arrows-left-right"></i> Đặt lại cột</button>
+        <div className="ml-auto"></div>
         {(nFlt > 0 || srt) && <button className="btn" onClick={() => { setFlt({}); setSrt(null); }}><i className="fa-solid fa-filter-circle-xmark"></i> Xoá lọc ({nFlt})</button>}
         <button className="btn" onClick={selectTable} disabled={!shown.length}><i className="fa-solid fa-object-group"></i> Chọn cả bảng</button>
         <button className="btn btn-green" onClick={copyAll} disabled={!shown.length}>
@@ -2529,7 +2602,7 @@ function BomDonHang({ active }) {
 
       <p className="text-xs text-gray-400 px-1" style={{ flex: '0 0 auto' }}>
         Nhập hoặc chọn lệnh trong gợi ý là tự tìm · Bấm / kéo chuột qua các ô để chọn vùng (Shift+bấm để mở rộng) · Ctrl+C sao chép, dán thẳng vào Excel / Google Sheet · Ctrl+A chọn cả bảng · Esc bỏ chọn ·
-        Bấm biểu tượng phễu ở tiêu đề để lọc / sắp xếp cột · Kéo mép phải tiêu đề cột để chỉnh độ rộng (nhấp đúp để đặt lại) · A− / A+ đổi cỡ chữ.
+        Bấm biểu tượng phễu ở tiêu đề để lọc / sắp xếp cột · Kéo mép phải tiêu đề cột để chỉnh độ rộng (nhấp đúp để đặt lại).
       </p>
 
       <div className="card bd-box" ref={boxRef} tabIndex={0}
@@ -2731,6 +2804,7 @@ function MainApp() {
 
   return (
     <div className="app-shell flex h-screen overflow-hidden">
+      <ToastHost />
       <div className="no-print h-screen"><Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} collapsed={collapsed} setCollapsed={setCollapsed} counts={counts} /></div>
       <div className="app-col flex-1 flex flex-col min-w-0 h-screen">
         <header className="no-print h-14 flex items-center justify-end gap-3 px-6 bg-white border-b border-gray-200">
