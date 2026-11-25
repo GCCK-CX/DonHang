@@ -2034,7 +2034,7 @@ function BomKanban({ active }) {
   // Nạp LỆNH GẦN ĐÂY NHẤT (toàn bộ các dòng của lệnh đó) lên bảng Up Bom.
   // I.base = số dòng đã có -> các dòng này chỉ đọc, khi lưu chỉ lưu từ dòng I.base + 1 trở đi.
     // Lệnh cuối cùng: Supabase (dòng có sheet_row lớn nhất) + Google Sheet (dòng cuối cột A)
-  const fetchLastInfo = async (force) => {
+  const fetchLastInfo = async (force, noSheet) => {
     let sb;
     try {
       const { data, error } = await supabase.from(TB_KANBAN).select('id, col_a, col_b, sheet_row')
@@ -2043,7 +2043,7 @@ function BomKanban({ active }) {
       const d = data && data[0];
       sb = { id: d ? d.id : 0, lsx: d ? String(d.col_a || '').trim() : '', stt: d ? String(d.col_b || '').trim() : '', row: d ? (d.sheet_row || 0) : 0 };
     } catch (e) { return null; }
-    if (force || Date.now() - shRef.current.at > 60000) {
+    if (!noSheet && (force || Date.now() - shRef.current.at > 60000)) {
       try {
         const j = await gs('last', {});
         shRef.current = { at: Date.now(), v: { lsx: j.lsx || '', stt: j.stt || '', row: j.row || 0 }, err: '' };
@@ -2195,7 +2195,7 @@ function BomKanban({ active }) {
     if (miss.length) return alert('Có ' + miss.length + ' dòng thiếu Lệnh sản xuất (cột A) hoặc STT (cột B), ví dụ dòng ' + miss.slice(0, 5).map(x => x.i + 1).join(', ') + '. Hãy điền hoặc xoá các dòng này.');
         // Kiểm tra lại lệnh cuối ngay trước khi lưu: có người vừa up thì cảnh báo để khỏi up trùng
     setBusy('Đang kiểm tra lệnh cuối…');
-    const li = await fetchLastInfo(true);
+    const li = await fetchLastInfo(true, true);     // chỉ hỏi Supabase cho nhanh, không chờ Google Sheet
     setBusy('');
     if (li && (li.sb.lsx !== (I.baseLsx || '') || li.sb.id !== (I.baseId || 0))) {
       const go = await ask({ danger: true, icon: 'fa-triangle-exclamation', title: 'Có lệnh mới vừa được up!',
