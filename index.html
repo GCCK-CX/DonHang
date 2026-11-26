@@ -2427,6 +2427,13 @@ const BD_W = BD_W20.map(w => Math.round(w * 1.6));   // độ rộng mặc đị
 // Tách nhiều lệnh sản xuất: ngăn cách bằng xuống dòng, tab, dấu phẩy, chấm phẩy hoặc khoảng trắng
 const parseLsx = (s) => Array.from(new Set(String(s || '').split(/[\s,;]+/).map(x => x.trim()).filter(Boolean)));
 
+// Khi sao chép: ngày dd/mm/yyyy -> yyyy-mm-dd (Google Sheet / Excel hiểu đúng ở mọi ngôn ngữ), chỉ áp dụng cột KHGH (cột 0)
+const bdOut = (ci, v) => {
+  if (ci !== 0 || !/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) return v;
+  const [d, m, y] = v.split('/');
+  return y + '-' + m.padStart(2, '0') + '-' + d.padStart(2, '0');
+};
+
 function BomDonHang({ active }) {
   const lsxList = useLsxList(active);
   const [input, setInput] = useState('');
@@ -2543,7 +2550,8 @@ function BomDonHang({ active }) {
   // ---- Sao chép ----
   const copyAll = async () => {
     const rowsOut = R ? shown.slice(R.r1, R.r2 + 1).map(a => a.slice(R.c1, R.c2 + 1)) : shown;   // có vùng chọn thì chỉ chép vùng đó
-    const text = rowsOut.map(a => a.map(tsvQ).join('\t')).join('\n');                            // không chép hàng tiêu đề
+    const c0 = R ? R.c1 : 0;
+    const text = rowsOut.map(a => a.map((v, j) => tsvQ(bdOut(c0 + j, v))).join('\t')).join('\n');   // không chép hàng tiêu đề
     try { await navigator.clipboard.writeText(text); }
     catch (e) { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
     setCopied(true); setTimeout(() => setCopied(false), 1800);
@@ -2579,7 +2587,7 @@ function BomDonHang({ active }) {
   };
   const onBoxCopy = (e) => {
     if (!R) return;
-    const text = shown.slice(R.r1, R.r2 + 1).map(a => a.slice(R.c1, R.c2 + 1).map(tsvQ).join('\t')).join('\n');
+    const text = shown.slice(R.r1, R.r2 + 1).map(a => a.slice(R.c1, R.c2 + 1).map((v, j) => tsvQ(bdOut(R.c1 + j, v))).join('\t')).join('\n');
     e.clipboardData.setData('text/plain', text); e.preventDefault();
     setCopied(true); setTimeout(() => setCopied(false), 1500);
   };
