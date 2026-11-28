@@ -2488,7 +2488,7 @@ function BomKanban({ active }) {
             <button className="btn btn-red ml-auto" onClick={deleteSel} {...dis(!E.sel.size || !can('bomkanban.delete'))}><i className="fa-solid fa-trash"></i> Xoá dòng đã chọn ({E.sel.size})</button>
             <button className="btn btn-green" onClick={saveEdit} {...dis(!E.dirty.size || !can('bomkanban.edit'))}><i className="fa-solid fa-floppy-disk"></i> Lưu thay đổi ({E.dirty.size})</button>
           </>) : (<>
-            <button className="btn btn-primary" onClick={() => setMode('edit')}><i className="fa-solid fa-pen"></i> Sửa Bom</button>
+            <button className="btn btn-primary" onClick={() => setMode('edit')} {...dis(!can('bomkanban.edit'))}><i className="fa-solid fa-pen"></i> Sửa Bom</button>
             <span className="font-bold text-slate-700 text-sm">Up BOM Kanban</span>
             <span className="text-xs text-slate-500">{importFilled().length} dòng mới sẽ lưu · {I.sel.size} dòng đang chọn</span>
             <button className="btn ml-auto" onClick={() => setCfgOpen(true)}><i className="fa-solid fa-sliders"></i> Cấu hình</button>
@@ -2529,7 +2529,7 @@ function BomKanban({ active }) {
         {mode === 'edit' && !loading && !E.loaded && <div className="card p-6 text-center text-gray-400">Nhập lệnh sản xuất rồi nhấn Enter để hiển thị dữ liệu cần sửa.</div>}
         {mode === 'edit' && !loading && E.loaded && !E.data.length && <div className="card p-6 text-center text-gray-400">Không tìm thấy lệnh sản xuất “{E.loaded}”.</div>}
         {mode === 'edit' && !loading && E.data.length > 0 && <SheetGrid key={'e' + gk} store={E} onChange={re} canAdd={false} locked={!can('bomkanban.edit')} />}
-        {mode === 'import' && <button className="btn btn-primary" onClick={() => setMode('edit')} {...dis(!can('bomkanban.edit'))}><i className="fa-solid fa-pen"></i> Sửa Bom</button>
+        {mode === 'import' && <SheetGrid key={'i' + gk} store={I} onChange={re} canAdd={true} locked={!can('bomkanban.up')} />}
       </div>
 
             {cfgOpen && (
