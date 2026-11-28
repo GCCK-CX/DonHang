@@ -267,6 +267,24 @@ button, input, select, textarea { font-family: inherit; }
     .tem-page { box-shadow:none !important; }
     .tem-no { display:none !important; }
   }
+
+    /* ---------- In ĐH BUS: viền trái ngoài cùng ---------- */
+  table.erp.dm.bus thead tr:nth-child(3) th:first-child,
+  table.erp.dm.bus thead tr:nth-child(4) th:first-child { box-shadow:inset 1px 0 0 #000; }
+
+  /* ---------- Phân quyền ---------- */
+  .sw { position:relative; width:42px; height:24px; border-radius:999px; background:#cbd5e1; flex:0 0 auto; transition:.15s; cursor:pointer; border:0; padding:0; }
+  .sw::after { content:''; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.3); transition:.15s; }
+  .sw.on { background:#22c55e; } .sw.on::after { left:21px; }
+  .sw:disabled { opacity:.55; cursor:not-allowed; }
+  .pq-user { padding:12px 16px; border-bottom:1px solid #e5ebf3; cursor:pointer; border-left:3px solid transparent; }
+  .pq-user:hover { background:#f5f9fe; }
+  .pq-user.on { background:#eaf2fd; border-left-color:#1d58a8; }
+  .pq-box { border:1px solid var(--line); border-radius:12px; padding:12px 16px; background:#fff; }
+  .pq-box h4 { font-size:12.5px; font-weight:800; color:#1d3f7a; }
+  .pq-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px 24px; margin-top:10px; }
+  .pq-row { display:flex; align-items:center; gap:10px; font-size:13px; }
+
 </style>
 </head>
 <body>
@@ -324,6 +342,7 @@ const BOM_COLUMNS = [
   { key: "id_key", label: "ID key", w: 120 },
   { key: "nhan_vat_tu", label: "Nhận VT", w: 80, type: "bool" },
   { key: "giao_hang", label: "Giao hàng", w: 80, type: "bool" },
+  { key: "gcn", label: "GCN", w: 80, type: "bool" },
   { key: "ghi_chu", label: "Ghi chú", w: 180 },
 ];
 
@@ -479,6 +498,93 @@ function QR({ text, size = 130 }) {
   return <div className="qr-box" style={{ width: size, height: size }} dangerouslySetInnerHTML={{ __html: html }} />;
 }
 
+// ---------- Đăng nhập + quyền ----------
+const AuthCtx = createContext(null);
+const useAuth = () => useContext(AuthCtx);
+const TOKEN_KEY = 'app_token_v1';
+
+function LoginScreen({ onLogin }) {
+  const [u, setU] = useState('');
+  const [p, setP] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const submit = async () => {
+    if (!u.trim() || !p) { setErr('Hãy nhập tên đăng nhập và mật khẩu.'); return; }
+    setBusy(true); setErr('');
+    try {
+      const { data, error } = await supabase.rpc('app_login', { p_user: u.trim(), p_pass: p });
+      if (error) throw new Error(error.message);
+      onLogin(data);
+    } catch (e) { setErr(e.message || String(e)); }
+    setBusy(false);
+  };
+  const enter = (e) => { if (e.key === 'Enter') submit(); };
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
+                  background: 'linear-gradient(135deg,#e6f0fb 0%,#eef2f7 45%,#dbe7f7 100%)' }}>
+      <div className="card" style={{ width: 'min(400px,100%)', padding: '34px 32px 28px', boxShadow: '0 25px 60px rgba(15,23,42,.18)' }}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><Logo collapsed={false} /></div>
+        <h1 className="text-center font-extrabold text-slate-800" style={{ fontSize: 19, marginTop: 12 }}>Production Control</h1>
+        <p className="text-center text-xs text-gray-500" style={{ marginBottom: 24 }}>Đăng nhập để tiếp tục</p>
+        <label className="text-xs font-bold text-slate-500">Tên đăng nhập</label>
+        <input className="inp w-full" style={{ marginTop: 4, marginBottom: 12 }} autoFocus value={u} autoComplete="username"
+               onChange={e => setU(e.target.value)} onKeyDown={enter} />
+        <label className="text-xs font-bold text-slate-500">Mật khẩu</label>
+        <input type="password" className="inp w-full" style={{ marginTop: 4 }} value={p} autoComplete="current-password"
+               onChange={e => setP(e.target.value)} onKeyDown={enter} />
+        {err && <div className="dlg-warn" style={{ textAlign: 'left' }}><i className="fa-solid fa-circle-exclamation"></i> {err}</div>}
+        <button className="btn btn-primary w-full" disabled={busy} onClick={submit}
+                style={{ justifyContent: 'center', marginTop: 20, padding: '11px 16px', fontSize: 14 }}>
+          {busy ? 'Đang đăng nhập…' : 'Đăng nhập'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AppGate() {
+  const [st, setSt] = useState({ loading: true, user: null, token: '' });
+  const tokenRef = useRef('');
+  const refresh = async (tk) => {
+    const t = tk || tokenRef.current; if (!t) return;
+    try {
+      const { data, error } = await supabase.rpc('app_me', { p_token: t });
+      if (error) throw error;
+      if (!data) {                                           // phiên hết hạn / tài khoản bị khoá
+        try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+        tokenRef.current = ''; setSt({ loading: false, user: null, token: '' }); return;
+      }
+      setSt(p => (p.token === t && JSON.stringify(p.user) === JSON.stringify(data)) ? p : { loading: false, user: data, token: t });
+    } catch (e) { setSt(p => p.loading ? { ...p, loading: false } : p); }     // lỗi mạng: giữ nguyên
+  };
+  useEffect(() => {
+    let t = ''; try { t = localStorage.getItem(TOKEN_KEY) || ''; } catch (e) {}
+    tokenRef.current = t;
+    if (t) refresh(t); else setSt({ loading: false, user: null, token: '' });
+    const iv = setInterval(() => refresh(), 60000);          // Admin đổi quyền thì tối đa 1 phút sau máy khác tự cập nhật
+    const vis = () => { if (!document.hidden) refresh(); };
+    document.addEventListener('visibilitychange', vis);
+    return () => { clearInterval(iv); document.removeEventListener('visibilitychange', vis); };
+  }, []);
+  const onLogin = (res) => {
+    try { localStorage.setItem(TOKEN_KEY, res.token); } catch (e) {}
+    tokenRef.current = res.token; setSt({ loading: false, user: res.user, token: res.token });
+  };
+  const logout = async () => {
+    const t = tokenRef.current;
+    try { await supabase.rpc('app_logout', { p_token: t }); } catch (e) {}
+    try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
+    tokenRef.current = ''; setSt({ loading: false, user: null, token: '' });
+  };
+  const ctx = useMemo(() => st.user ? {
+    user: st.user, token: st.token, logout, refresh,
+    can: (k) => st.user.role === 'admin' || !!(st.user.perms && st.user.perms[k]),
+  } : null, [st]);
+  if (st.loading) return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>Đang tải…</div>;
+  if (!st.user) return <LoginScreen onLogin={onLogin} />;
+  return <AuthCtx.Provider value={ctx}><MainApp /></AuthCtx.Provider>;
+}
+
 // =====================================================================
 // 3. DASHBOARD
 // =====================================================================
@@ -557,6 +663,7 @@ function TraCuu() {
   const [lsxSel, setLsxSel] = useState('');
   const [stage, setStage] = useState('all');
   const pendingSaves = useRef(new Set());
+  const { can } = useAuth();
 
   useEffect(() => { load(); }, []);
 
@@ -585,6 +692,7 @@ function TraCuu() {
 
   // Optimistic toggle cho Nhận VT / Giao hàng
   const toggleBool = async (row, field) => {
+    if (!can('tracuu.tick')) return;
     const key = row.id + '-' + field;
     if (pendingSaves.current.has(key)) return;
     pendingSaves.current.add(key);
@@ -649,7 +757,7 @@ function TraCuu() {
                 {BOM_COLUMNS.map(c => (
                   <td key={c.key} className={(KEY_COLS.includes(c.key) ? 'key ' : '') + (c.w <= 90 ? 'ctr' : '')}>
                     {c.type === 'bool' ? (
-                      <input type="checkbox" checked={!!r[c.key]} onChange={() => toggleBool(r, c.key)} className="w-4 h-4 accent-blue-600 cursor-pointer" />
+                      <input type="checkbox" checked={!!r[c.key]} onChange={() => toggleBool(r, c.key)} disabled={!can('tracuu.tick')} className="w-4 h-4 accent-blue-600 cursor-pointer" />
                     ) : (r[c.key] ?? '')}
                   </td>
                 ))}
@@ -673,6 +781,7 @@ function Bom() {
   const [details, setDetails] = useState([]);
   const [isImportOpen, setIsImportOpen] = useState(false);
   const [importLsx, setImportLsx] = useState('');
+  const { can } = useAuth();
   const [file, setFile] = useState(null);
 
   useEffect(() => { fetchOrders(); }, []);
@@ -753,7 +862,7 @@ function Bom() {
       <div className="card p-3 flex items-center gap-3">
         <span className="text-xs font-bold text-slate-500">{orders.length} lệnh sản xuất</span>
         <button onClick={fetchOrders} className="btn ml-auto"><i className="fa-solid fa-rotate"></i> Làm mới</button>
-        <button onClick={() => setIsImportOpen(true)} className="btn btn-green"><i className="fa-solid fa-file-csv"></i> Nhập BOM (CSV)</button>
+        {can('bom.import') && <button onClick={() => setIsImportOpen(true)} className="btn btn-green"><i className="fa-solid fa-file-csv"></i> Nhập BOM (CSV)</button>}
       </div>
       <div className="card overflow-auto" style={{ maxHeight: '72vh' }}>
         <table className="erp">
@@ -846,15 +955,27 @@ function ColFilterPop({ pop, view, cur, onApply, onSort, onClose }) {
   );
 }
 
+// ---- Mẫu In ĐH BUS (hình 2): 18 cột, chỉ 1 cột "Công đoạn giao hàng" = công đoạn sau (giống tab BOM Đơn hàng) ----
+const BUS_W = [110, 260, 340, 170, 130, 130, 120, 130, 100, 100, 110, 140,     // TT … SL/ĐH
+               230, 200, 160,                                                  // Công đoạn giao hàng, Ngày giao hàng, Số lượng
+               130, 130, 220];                                                 // Bên giao, Bên nhận, Ghi chú
+const BUS_GET = [
+  (r, i) => cell(r, 'B') || String(i + 1), r => cell(r, 'Q'), r => cell(r, 'R'), r => cell(r, 'U'),
+  r => cell(r, 'AB'), r => cell(r, 'AC'), r => cell(r, 'AD'), r => cell(r, 'AE'), r => cell(r, 'AF'), r => cell(r, 'AG'), r => cell(r, 'AI'), r => cell(r, 'AJ'),
+  r => bdProc(r).after, () => '', () => '', () => '', () => '', r => cell(r, 'EZ'),
+];
+
 function InDonHang() {
+  const { can } = useAuth();
   const lsxList = useLsxList();
+  const [bus, setBus] = useState(false);                 // false = mẫu thường · true = mẫu In ĐH BUS
   const [input, setInput] = useState('');
   const [khgh, setKhgh] = useState('');
   const [rows, setRows] = useState([]);
   const [lsxShown, setLsxShown] = useState('');
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-    // Zoom bảng vừa khung xem (màn hình) và vừa A4 ngang (khi in). Dùng CSS zoom nên cỡ chữ gốc không đổi.
+  // Zoom bảng vừa khung xem (màn hình) và vừa A4 ngang (khi in). Dùng CSS zoom nên cỡ chữ gốc không đổi.
   const boxRef = useRef(null);
   const [boxW, setBoxW] = useState(0);
   useEffect(() => {
@@ -864,13 +985,20 @@ function InDonHang() {
     const ro = new ResizeObserver(m); ro.observe(el);
     return () => ro.disconnect();
   }, [rows.length, loading]);
-  // ---- Độ rộng cột kéo dãn tự do (nhớ lại trong trình duyệt) ----
+
+  // ---- Độ rộng cột kéo dãn tự do (mỗi mẫu nhớ riêng trong trình duyệt) ----
   const [colW, setColW] = useState(() => {
     try { const a = JSON.parse(localStorage.getItem('dm_colw_v1')); if (Array.isArray(a) && a.length === DM_W.length) return a; } catch (e) {}
     return DM_W;
   });
+  const [colWb, setColWb] = useState(() => {
+    try { const a = JSON.parse(localStorage.getItem('bus_colw_v1')); if (Array.isArray(a) && a.length === BUS_W.length) return a; } catch (e) {}
+    return BUS_W;
+  });
   useEffect(() => { try { localStorage.setItem('dm_colw_v1', JSON.stringify(colW)); } catch (e) {} }, [colW]);
-  const dmTotal = colW.reduce((a, b) => a + b, 0);
+  useEffect(() => { try { localStorage.setItem('bus_colw_v1', JSON.stringify(colWb)); } catch (e) {} }, [colWb]);
+  const W = bus ? colWb : colW, setW = bus ? setColWb : setColW, W0 = bus ? BUS_W : DM_W;
+  const dmTotal = W.reduce((a, b) => a + b, 0);
   const [frozen, setFrozen] = useState(null);          // đang kéo cột thì giữ nguyên tỉ lệ zoom cho khỏi "trượt"
   const zs0 = boxW ? Math.floor(Math.min(1, (boxW - 24) / dmTotal) * 1000) / 1000 : 0.4;
   const zs = frozen || zs0;
@@ -878,12 +1006,12 @@ function InDonHang() {
 
   const startResize = (e, i) => {
     e.preventDefault(); e.stopPropagation();
-    const x0 = e.clientX, w0 = colW[i], z = zs0 || 1;
+    const x0 = e.clientX, w0 = W[i], z = zs0 || 1;
     setFrozen(zs0);
     document.body.style.cursor = 'col-resize';
     const mv = (ev) => {
       const w = Math.max(40, Math.round(w0 + (ev.clientX - x0) / z));   // chia cho zoom vì bảng đang thu nhỏ
-      setColW(p => { const a = p.slice(); a[i] = w; return a; });
+      setW(p => { const a = p.slice(); a[i] = w; return a; });
     };
     const up = () => {
       window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up);
@@ -914,14 +1042,15 @@ function InDonHang() {
   };
 
   const NC = 10;
-  const TOTAL_COLS = 12 + NC + 3;
-  let colNo = 0; const no = () => ++colNo;
+  const TOTAL_COLS = bus ? BUS_W.length : 12 + NC + 3;
 
-  // ---- Bộ lọc kiểu Excel ở hàng số 1…25 ----
+  // ---- Bộ lọc kiểu Excel ở hàng số ----
   const [flt, setFlt] = useState({});            // { chỉ số cột: Set giá trị được giữ lại }
   const [srt, setSrt] = useState(null);          // { c, dir }
   const [pop, setPop] = useState(null);          // { c, x, y }
-  const view = useMemo(() => rows.map((r, i) => { const sm = getStepMap(r); return { r, i, sm, v: DM_GET.map(f => f(r, i, sm)) }; }), [rows]);
+  const toggleBus = () => { setBus(b => !b); setFlt({}); setSrt(null); setPop(null); };
+  const getters = bus ? BUS_GET : DM_GET;
+  const view = useMemo(() => rows.map((r, i) => { const sm = bus ? null : getStepMap(r); return { r, i, sm, v: getters.map(f => f(r, i, sm)) }; }), [rows, bus]);
   const shownRows = useMemo(() => {
     let a = view.filter(x => Object.keys(flt).every(c => flt[c].has(x.v[c])));
     if (srt) a = a.slice().sort((p, q) => srt.dir * String(p.v[srt.c]).localeCompare(String(q.v[srt.c]), 'vi', { numeric: true }));
@@ -929,10 +1058,35 @@ function InDonHang() {
   }, [view, flt, srt]);
   const applyFlt = (c, s) => setFlt(p => { const n = { ...p }; if (s) n[c] = s; else delete n[c]; return n; });
 
+  const numRow = (
+    <tr>
+      {Array.from({ length: TOTAL_COLS }, (_, i) => (
+        <th key={i} style={{ background: '#cdf5fb', color: '#000', border: '1px solid #000', padding: '3px 4px', position: 'relative' }}>
+          {i + 1}
+          <button className={'col-flt no-print' + (flt[i] ? ' on' : '')} title="Lọc / sắp xếp"
+            onMouseDown={e => e.stopPropagation()}
+            onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setPop({ c: i, x: b.left, y: b.bottom + 4 }); }}>
+            <i className="fa-solid fa-filter"></i>
+          </button>
+          <span className="col-rs no-print" title="Kéo để chỉnh độ rộng · nhấp đúp để đặt lại cột này"
+            onMouseDown={e => startResize(e, i)}
+            onDoubleClick={() => setW(p => { const a = p.slice(); a[i] = W0[i]; return a; })} />
+        </th>
+      ))}
+    </tr>
+  );
+  const hd = { background: '#fff', color: '#000', border: '1px solid #000' };
+  const hc = { background: '#fbe5a2', color: '#000', border: '1px solid #000' };
+
   return (
     <div className="dm-root space-y-3">
       {/* Thanh công cụ (không in) */}
       <div className="no-print card p-3 flex flex-wrap items-center gap-3" style={{ position: 'sticky', top: 0, zIndex: 40, boxShadow: '0 4px 12px rgba(15,23,42,.08)' }}>
+        {can('indonhang.bus') && (
+          <button className={'btn ' + (bus ? 'btn-primary' : '')} onClick={toggleBus} title="Bật / tắt mẫu In ĐH BUS (danh mục giao nhận vật tư – bán thành phẩm)">
+            <i className="fa-solid fa-bus"></i> In ĐH BUS
+          </button>
+        )}
         <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
         <input list="lsx-datalist" value={input} onChange={e => { setInput(e.target.value); if (picked(e, lsxList)) search(e.target.value); }}
           onKeyDown={e => e.key === 'Enter' && search()} placeholder="Nhập mã lệnh sản xuất…" className="inp" style={{ width: 240 }} />
@@ -940,7 +1094,8 @@ function InDonHang() {
         <button onClick={() => search()} className="btn btn-primary"><i className="fa-solid fa-magnifying-glass"></i> Tìm kiếm</button>
         <span className="text-xs font-bold text-slate-500 ml-3">KH GH</span>
         <input value={khgh} onChange={e => setKhgh(e.target.value)} placeholder="Ngày/kế hoạch giao hàng" className="inp" style={{ width: 200 }} />
-        <button onClick={() => window.print()} disabled={!rows.length} className="btn btn-green ml-auto" style={{ opacity: rows.length ? 1 : .5 }}>
+        <button onClick={() => window.print()} disabled={!rows.length || !can('indonhang.print')} className="btn btn-green ml-auto"
+                style={{ opacity: rows.length && can('indonhang.print') ? 1 : .5 }}>
           <i className="fa-solid fa-print"></i> In đơn hàng
         </button>
       </div>
@@ -949,12 +1104,37 @@ function InDonHang() {
       {!loading && searched && rows.length === 0 && <div className="no-print card p-6 text-center text-gray-400">Không tìm thấy lệnh sản xuất “{input}”.</div>}
       {!loading && !searched && <div className="no-print card p-6 text-center text-gray-400">Nhập mã lệnh sản xuất rồi bấm Tìm kiếm (hoặc nhấn Enter).</div>}
 
-      {(
-        <div className="print-sheet card p-2" ref={boxRef}
-             style={{ flex: '1 1 auto', minHeight: 0, paddingTop: 0, overflowY: 'auto', overflowX: frozen ? 'auto' : 'hidden' }}>
-          <div className="dm-zoom" style={{ '--zs': zs, '--zp': zp }}>
-          <table className="erp dm" style={{ width: dmTotal, tableLayout: 'fixed' }}>
-            <colgroup>{colW.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+      <div className="print-sheet card p-2" ref={boxRef}
+           style={{ flex: '1 1 auto', minHeight: 0, paddingTop: 0, overflowY: 'auto', overflowX: frozen ? 'auto' : 'hidden' }}>
+        <div className="dm-zoom" style={{ '--zs': zs, '--zp': zp }}>
+        <table className={'erp dm' + (bus ? ' bus' : '')} style={{ width: dmTotal, tableLayout: 'fixed' }}>
+          <colgroup>{W.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+
+          {bus ? (
+            <thead>
+              <tr>
+                <th colSpan={TOTAL_COLS} style={{ background: '#fff', color: '#000', fontSize: 46, lineHeight: 1.25 }}>
+                  DANH MỤC GIAO NHẬN VẬT TƯ - BÁN THÀNH PHẨM GIA CÔNG<br /><span>ĐỊNH MỨC VẬT TƯ</span><br /><span>XƯỞNG: Gia Công Cắt Gọt</span>
+                </th>
+              </tr>
+              <tr>
+                <th colSpan={11} style={hd}>{'\u00a0'}</th>
+                <th style={hd}>LÔ</th>
+                <th colSpan={3} style={{ background: '#ffff00', color: '#000', border: '1px solid #000' }}>KH GH {khgh && `: ${khgh}`}</th>
+                <th colSpan={3} style={{ ...hd, fontSize: 50, fontWeight: 800 }}>{lsxShown}</th>
+              </tr>
+              <tr>
+                {['TT', 'MSCT', 'Tên chi tiết', 'Vật liệu', 'Dài', 'Rộng', 'Dày', 'Hình/ hộp', 'Dn', 'Dt', 'SL/SP', 'SL/ĐH'].map(h => <th key={h} style={hd}>{h}</th>)}
+                <th style={hc}>CÔNG ĐOẠN<br />GIAO HÀNG</th>
+                <th style={hc}>Ngày<br />Giao hàng</th>
+                <th style={hc}>Số lượng</th>
+                <th style={hc}>Bên giao<br /><span style={{ fontSize: 16, fontWeight: 400 }}>(Ký và ghi rõ họ tên)</span></th>
+                <th style={hc}>Bên nhận<br /><span style={{ fontSize: 16, fontWeight: 400 }}>(Ký và ghi rõ họ tên)</span></th>
+                <th style={hc}>Ghi chú</th>
+              </tr>
+              {numRow}
+            </thead>
+          ) : (
             <thead>
               <tr>
                 <th colSpan={TOTAL_COLS} style={{ background: '#fff', color: '#000', fontSize: 46, lineHeight: 1.25, borderBottom: '1px solid #000' }}>
@@ -963,76 +1143,63 @@ function InDonHang() {
               </tr>
               <tr>
                 {['TT', 'MSCT', 'Tên chi tiết', 'Vật liệu', 'Dài', 'Rộng', 'Dày', 'Hình/ hộp', 'Dn', 'Dt', 'SL/SP', 'SL/ĐH'].map((h, i) => (
-                  <th key={h} rowSpan={3} style={{ background: '#fff', color: '#000', border: '1px solid #000', minWidth: i === 2 ? 220 : i === 1 ? 110 : 52 }}>
-                    {h}
-                  </th>
+                  <th key={h} rowSpan={3} style={{ ...hd, minWidth: i === 2 ? 220 : i === 1 ? 110 : 52 }}>{h}</th>
                 ))}
                 <th colSpan={NC} style={{ background: '#ffff00', color: '#000', border: '1px solid #000' }}>KH GH {khgh && `: ${khgh}`}</th>
-                <th colSpan={3} rowSpan={2} style={{ background: '#fff', color: '#000', border: '1px solid #000', fontSize: 46, fontWeight: 800 }}>{lsxShown}</th>
+                <th colSpan={3} rowSpan={2} style={{ ...hd, fontSize: 50, fontWeight: 800 }}>{lsxShown}</th>
               </tr>
               <tr>
-                <th colSpan={NC} style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000' }}>Công đoạn gia công</th>
+                <th colSpan={NC} style={hc}>Công đoạn gia công</th>
               </tr>
               <tr>
-                {Array.from({ length: NC }, (_, i) => (
-                  <th key={i} style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 150 }}>NC{i + 1}</th>
-                ))}
-                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên giao<br /><span style={{ fontSize: 16, fontWeight: 400 }}>(Ký và ghi rõ họ tên)</span></th>
-                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 80 }}>Bên nhận<br /><span style={{ fontSize: 16, fontWeight: 400 }}>(Ký và ghi rõ họ tên)</span></th>
-                <th style={{ background: '#fbe5a2', color: '#000', border: '1px solid #000', minWidth: 120 }}>Ghi chú</th>
+                {Array.from({ length: NC }, (_, i) => <th key={i} style={{ ...hc, minWidth: 150 }}>NC{i + 1}</th>)}
+                <th style={{ ...hc, minWidth: 80 }}>Bên giao<br /><span style={{ fontSize: 16, fontWeight: 400 }}>(Ký và ghi rõ họ tên)</span></th>
+                <th style={{ ...hc, minWidth: 80 }}>Bên nhận<br /><span style={{ fontSize: 16, fontWeight: 400 }}>(Ký và ghi rõ họ tên)</span></th>
+                <th style={{ ...hc, minWidth: 120 }}>Ghi chú</th>
               </tr>
-              <tr>
-                {Array.from({ length: TOTAL_COLS }, (_, i) => (
-                  <th key={i} style={{ background: '#cdf5fb', color: '#000', border: '1px solid #000', padding: '3px 4px', position: 'relative' }}>
-                    {no()}
-                    <button className={'col-flt no-print' + (flt[i] ? ' on' : '')} title="Lọc / sắp xếp"
-                      onMouseDown={e => e.stopPropagation()}
-                      onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setPop({ c: i, x: b.left, y: b.bottom + 4 }); }}>
-                      <i className="fa-solid fa-filter"></i>
-                    </button>
-                    <span className="col-rs no-print" title="Kéo để chỉnh độ rộng · nhấp đúp để đặt lại cột này"
-                      onMouseDown={e => startResize(e, i)}
-                      onDoubleClick={() => setColW(p => { const a = p.slice(); a[i] = DM_W[i]; return a; })} />
-                  </th>
-                ))}
-              </tr>
+              {numRow}
             </thead>
-            <tbody>
-              {shownRows.length === 0 && Array.from({ length: 12 }, (_, k) => (
-                <tr key={'blank' + k}>{Array.from({ length: TOTAL_COLS }, (_, j) => <td key={j} style={{ border: '1px solid #000', height: 60 }}>{'\u00a0'}</td>)}</tr>
-              ))}
-              {shownRows.map(({ r, i: idx, sm: stepMap }) => {
-                const bd = { border: '1px solid #000' };
-                return (
-                  <tr key={r.id}>
-                    <td className="ctr bold" style={bd}>{cell(r, 'B') || idx + 1}</td>
-                    <td style={bd}>{cell(r, 'Q')}</td>
-                    <td className="bold" style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'R')}</td>
-                    <td className="ctr" style={bd}>{cell(r, 'U')}</td>
-                    <td className="ctr" style={bd}>{cell(r, 'AB')}</td>
-                    <td className="ctr" style={bd}>{cell(r, 'AC')}</td>
-                    <td className="ctr" style={bd}>{cell(r, 'AD')}</td>
-                    <td className="ctr" style={bd}>{cell(r, 'AE')}</td>
-                    <td className="ctr" style={bd}>{cell(r, 'AF')}</td>
-                    <td className="ctr" style={bd}>{cell(r, 'AG')}</td>
-                    <td className="ctr" style={bd}>{cell(r, 'AI')}</td>
-                    <td className="ctr sl" style={bd}>{cell(r, 'AJ')}</td>
+          )}
+
+          <tbody>
+            {shownRows.length === 0 && Array.from({ length: 12 }, (_, k) => (
+              <tr key={'blank' + k}>{Array.from({ length: TOTAL_COLS }, (_, j) => <td key={j} style={{ border: '1px solid #000', height: 60 }}>{'\u00a0'}</td>)}</tr>
+            ))}
+            {shownRows.map(({ r, i: idx, sm: stepMap }) => {
+              const bd = { border: '1px solid #000' };
+              return (
+                <tr key={r.id}>
+                  <td className="ctr bold" style={bd}>{cell(r, 'B') || idx + 1}</td>
+                  <td style={bd}>{cell(r, 'Q')}</td>
+                  <td className="bold" style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'R')}</td>
+                  <td className="ctr" style={bd}>{cell(r, 'U')}</td>
+                  <td className="ctr" style={bd}>{cell(r, 'AB')}</td>
+                  <td className="ctr" style={bd}>{cell(r, 'AC')}</td>
+                  <td className="ctr" style={bd}>{cell(r, 'AD')}</td>
+                  <td className="ctr" style={bd}>{cell(r, 'AE')}</td>
+                  <td className="ctr" style={bd}>{cell(r, 'AF')}</td>
+                  <td className="ctr" style={bd}>{cell(r, 'AG')}</td>
+                  <td className="ctr" style={bd}>{cell(r, 'AI')}</td>
+                  <td className="ctr sl" style={bd}>{cell(r, 'AJ')}</td>
+                  {bus ? (<>
+                    <td className="ctr bold" style={{ ...bd, whiteSpace: 'normal' }}>{bdProc(r).after}</td>
+                    <td style={bd}></td><td style={bd}></td><td style={bd}></td><td style={bd}></td>
+                  </>) : (<>
                     {Array.from({ length: NC }, (_, i) => (
                       <td key={i} className="ctr bold" style={{ ...bd, whiteSpace: 'normal' }}>{stepMap[i + 1] || ''}</td>
                     ))}
-                    <td style={bd}></td>
-                    <td style={bd}></td>
-                    <td className="note" style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'EZ')}</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-          </div>
+                    <td style={bd}></td><td style={bd}></td>
+                  </>)}
+                  <td className="note" style={{ ...bd, whiteSpace: 'normal' }}>{cell(r, 'EZ')}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
         </div>
-      )}
-            {pop && <ColFilterPop pop={pop} view={view} cur={flt[pop.c]} onApply={applyFlt}
-                onSort={(c, d) => { setSrt({ c, dir: d }); setPop(null); }} onClose={() => setPop(null)} />}
+      </div>
+      {pop && <ColFilterPop pop={pop} view={view} cur={flt[pop.c]} onApply={applyFlt}
+              onSort={(c, d) => { setSrt({ c, dir: d }); setPop(null); }} onClose={() => setPop(null)} />}
     </div>
   );
 }
@@ -1220,6 +1387,7 @@ function ImportKanbanModal({ onClose, onDone }) {
 
 function Kanban({ active }) {
   const [ver, setVer] = useState(0);
+  const { can } = useAuth();
   const [importOpen, setImportOpen] = useState(false);
   const lsxList = useLsxList(ver);
   const [input, setInput] = useState('');
@@ -1418,7 +1586,7 @@ function Kanban({ active }) {
           <button className="btn" onClick={() => setSelIds(new Set())} disabled={!selIds.size} style={{ opacity: selIds.size ? 1 : .5 }}>
             <i className="fa-solid fa-xmark"></i> Bỏ chọn ({selIds.size})
           </button>
-          <button className="btn btn-green" onClick={doPrint} disabled={!printList.length} style={{ opacity: printList.length ? 1 : .5 }}>
+          <button className="btn btn-green" onClick={doPrint} disabled={!printList.length || !can('kanban.print')} style={{ opacity: printList.length && can('kanban.print') ? 1 : .5 }}>
             <i className="fa-solid fa-print"></i> In tem {selIds.size ? 'đã chọn' : 'tất cả'} ({printList.length})
           </button>
         </div>
@@ -1603,7 +1771,7 @@ const XRow = React.memo(function XRow({ r, row, orig, sel, lk, nw, actC, ed, no,
   );
 });
 
-function SheetGrid({ store, onChange, canAdd }) {
+function SheetGrid({ store, onChange, canAdd, locked }) {
   const boxRef = useRef(null), headRef = useRef(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [vh, setVh] = useState(600);
@@ -1653,6 +1821,7 @@ function SheetGrid({ store, onChange, canAdd }) {
     if (diff) store.dirty.add(r); else store.dirty.delete(r);
   };
   const applyRows = (map) => {                               // map: Map(r -> dòng mới). Lưu dòng cũ để hoàn tác
+    if (locked) return;                                      // không có quyền: bảng chỉ đọc
     const snap = [], base = store.base || 0;
     map.forEach((row, r) => { if (r < base) return; snap.push({ r, row: store.data[r] }); store.data[r] = row; refreshDirty(r); });   // dòng của lệnh đã lưu: chỉ đọc
     if (!snap.length) return;
@@ -1724,7 +1893,7 @@ function SheetGrid({ store, onChange, canAdd }) {
   };
 
   // ---------- sửa ô ----------
-  const startEdit = (r, c, selAll) => { if (r < (store.base || 0)) return; const e = { r, c, v: store.data[r][c], sel: !!selAll }; edRef.current = e; setEd(e); };
+  const startEdit = (r, c, selAll) => { if (locked || r < (store.base || 0)) return; const e = { r, c, v: store.data[r][c], sel: !!selAll }; edRef.current = e; setEd(e); };
   const edChange = (v) => { const e = { ...edRef.current, v, sel: false }; edRef.current = e; setEd(e); };
   const finishEdit = (save, dr, dc, focusBack) => {
     const e = edRef.current; if (!e) return;
@@ -1871,7 +2040,7 @@ function SheetGrid({ store, onChange, canAdd }) {
   const onPaste = (e) => {
     if (e.target.tagName === 'INPUT') return;
     e.preventDefault();
-    const text = e.clipboardData.getData('text'); if (!text || !n) return;
+    const text = e.clipboardData.getData('text'); if (!text || !n || locked) return;
     // Dán theo vị trí cột THẬT (A, B, C…): cột đang ẩn vẫn nhận dữ liệu như trên Google Sheet
     const m = parseTSV(text), r0 = R1, c0 = fixCol(C1);
     if (r0 < (store.base || 0)) { alert('Các dòng 1–' + store.base + ' là lệnh đã lưu (chỉ đọc, sẽ không lưu lại). Hãy bấm vào ô cột A của dòng ' + (store.base + 1) + ' rồi dán.'); return; }
@@ -1998,6 +2167,20 @@ function ColPickPop({ store, pos, onChange, onClose }) {
   );
 }
 
+// Lấy N lệnh cuối cùng (theo id lớn nhất = lệnh up sau cùng), mới nhất đứng đầu
+const lastLsxList = async (n) => {
+  const out = []; let from = 0, top = null;
+  while (out.length < n && from < 10000) {
+    const { data, error } = await supabase.from(TB_KANBAN).select('id, col_a, sheet_row').order('id', { ascending: false }).range(from, from + 999);
+    if (error) throw error;
+    if (!top && data && data[0]) top = data[0];
+    (data || []).forEach(d => { if (d.col_a && !out.includes(d.col_a)) out.push(d.col_a); });
+    if (!data || data.length < 1000) break;
+    from += 1000;
+  }
+  return { list: out.slice(0, n), top };
+};
+
 function BomKanban({ active }) {
   const [mode, setMode] = useState('import');          // 'import' = Up Bom (mở trước) · 'edit' = Sửa Bom
   const [input, setInput] = useState('');
@@ -2005,6 +2188,10 @@ function BomKanban({ active }) {
   const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState(null);
   const [colPop, setColPop] = useState(null);           // vị trí hộp chọn cột (null = đóng)
+  const { can } = useAuth();
+  const [cfgOpen, setCfgOpen] = useState(false);
+  const [lastN, setLastN] = useState(() => { try { const n = Number(localStorage.getItem('bk_lastn_v1')); return [1, 2, 3, 4, 5].includes(n) ? n : 1; } catch (e) { return 1; } });
+  const lastNRef = useRef(lastN);
   const [gk, setGk] = useState(0);                      // đổi số này để dựng lại lưới
   const [, bump] = useState(0);
   const re = () => bump(x => x + 1);
@@ -2057,25 +2244,25 @@ function BomKanban({ active }) {
 
   // Nạp LỆNH GẦN ĐÂY NHẤT (toàn bộ các dòng của lệnh đó) lên bảng Up Bom.
   // I.base = số dòng đã có -> các dòng này chỉ đọc, khi lưu chỉ lưu từ dòng I.base + 1 trở đi.
-  const loadLatest = async (quiet) => {
-    setBusy('Đang tải lệnh gần đây nhất…'); if (!quiet) setMsg(null);
+    const loadLatest = async (quiet, nOv) => {
+    const n = nOv || lastNRef.current || 1;
+    setBusy('Đang tải ' + (n > 1 ? n + ' lệnh' : 'lệnh') + ' gần đây nhất…'); if (!quiet) setMsg(null);
     try {
-      const { data: lr, error: e1 } = await supabase.from(TB_KANBAN).select('id, col_a, sheet_row')
-        .order('id', { ascending: false }).limit(1);
-      if (e1) throw e1;
-      const lsx = lr && lr[0] ? lr[0].col_a : '';
+      const { list, top } = await lastLsxList(n);
       let arr = [];
-      if (lsx) {
-        const data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').eq('col_a', lsx).order('sheet_row').order('id'));
+      if (list.length) {
+        const data = await fetchAll(() => supabase.from(TB_KANBAN).select('*').in('col_a', list).order('sheet_row').order('id'));
+        const ord = new Map(list.map((k, i) => [normKey(k), i]));          // lệnh cũ nằm trên, lệnh mới nhất nằm sát vùng dán
+        data.sort((a, b) => (ord.get(normKey(b.col_a)) ?? 0) - (ord.get(normKey(a.col_a)) ?? 0) || (a.sheet_row || 0) - (b.sheet_row || 0) || a.id - b.id);
         arr = data.map(d => BK_LETTERS.map(L => { const x = d['col_' + L.toLowerCase()]; return x == null ? '' : String(x); }));
       }
       I.data = arr.concat(Array.from({ length: 30 }, blankRow));
-      I.base = arr.length; I.baseLsx = String(lsx || '').trim(); I.baseRow = lr && lr[0] ? (lr[0].sheet_row || 0) : 0;
-      I.baseId = lr && lr[0] ? (lr[0].id || 0) : 0;
+      I.base = arr.length; I.baseLsx = String(list[0] || '').trim(); I.baseRow = top ? (top.sheet_row || 0) : 0;
+      I.baseId = top ? (top.id || 0) : 0;
       I.sel = new Set(); I.undo = [];
       setGk(k => k + 1);
       fetchLastInfo(true);
-      if (!quiet) ok(arr.length ? '✔ Đã nạp lệnh gần đây nhất: ' + lsx + ' (' + arr.length + ' dòng). Hãy dán lệnh mới từ dòng ' + (arr.length + 1) + '.' : 'Chưa có lệnh nào trong Supabase.');
+      if (!quiet) ok(arr.length ? 'Đã nạp ' + list.length + ' lệnh gần đây nhất (' + arr.length + ' dòng). Hãy dán lệnh mới từ dòng ' + (arr.length + 1) + '.' : 'Chưa có lệnh nào trong Supabase.', 'Đã nạp lệnh gần đây nhất');
     } catch (e) { if (!quiet) bad('Không tải được: ' + (e.message || e)); }
     setBusy('');
   };
@@ -2116,6 +2303,7 @@ function BomKanban({ active }) {
 
     // ----- Lưu các dòng đã sửa: Supabase trước, rồi sang Google Sheet (chỉ các ô đã đổi) -----
   const saveEdit = async () => {
+    if (!can('bomkanban.edit')) return alert('Bạn không có quyền Sửa BOM.');
     const idx = Array.from(E.dirty).sort((a, b) => a - b); if (!idx.length) return;
     const yes = await ask({ icon: 'fa-floppy-disk', title: 'Lưu thay đổi',
       message: 'Dữ liệu được lưu vào Supabase trước, sau đó đồng bộ sang Google Sheet (chỉ ghi các ô đã sửa).',
@@ -2153,6 +2341,7 @@ function BomKanban({ active }) {
 
     // ----- Xoá các dòng đang chọn: xoá ĐỒNG THỜI trên Google Sheet và Supabase -----
   const deleteSel = async () => {
+    if (!can('bomkanban.delete')) return alert('Bạn không có quyền xoá dòng BOM.');
     const idx = Array.from(E.sel).sort((a, b) => a - b); if (!idx.length) return;
     const yes = await ask({ danger: true, icon: 'fa-trash-can', title: 'Xác nhận xoá BOM',
       message: 'Các dòng BOM đã chọn sẽ được xoá khỏi Supabase và Google Sheet.',
@@ -2192,6 +2381,7 @@ function BomKanban({ active }) {
   const importFilled = () => I.data.map((r, i) => ({ r, i })).filter(x => x.i >= (I.base || 0) && x.r.some(v => String(v).trim() !== ''));
     const saveImport = async () => {
     const rows = importFilled();
+    if (!can('bomkanban.up')) return alert('Bạn không có quyền Up BOM.');
     if (!rows.length) return alert('Chưa có dữ liệu để lưu.');
     const miss = rows.filter(x => !bkTrim(x.r[0]) || !bkTrim(x.r[1]));
     if (miss.length) return alert('Có ' + miss.length + ' dòng thiếu Lệnh sản xuất (cột A) hoặc STT (cột B), ví dụ dòng ' + miss.slice(0, 5).map(x => x.i + 1).join(', ') + '. Hãy điền hoặc xoá các dòng này.');
@@ -2263,6 +2453,14 @@ function BomKanban({ active }) {
       message: 'Bảng đang có dòng mới chưa lưu. Nạp lệnh gần đây nhất sẽ thay thế toàn bộ nội dung này.', confirmText: 'Thay thế' }))) return;
     await loadLatest(false);
   };
+  const pickLastN = async (n) => {
+    if (n === lastN) return;
+    if (importFilled().length && !(await ask({ icon: 'fa-clock-rotate-left', title: 'Thay nội dung bảng?',
+      message: 'Bảng đang có dòng mới chưa lưu. Đổi số lệnh hiển thị sẽ thay thế toàn bộ nội dung này.', confirmText: 'Thay thế' }))) return;
+    setLastN(n); lastNRef.current = n;
+    try { localStorage.setItem('bk_lastn_v1', String(n)); } catch (e) {}
+    await loadLatest(false, n);
+  };
   const addRows = () => { for (let k = 0; k < 100; k++) I.data.push(blankRow()); re(); };
   // Xoá hết: xoá luôn, KHÔNG hỏi xác nhận (muốn lấy lại lệnh gần nhất thì bấm "Lệnh gần đây nhất")
   const clearImport = () => { I.data = Array.from({ length: 30 }, blankRow); I.base = 0; I.baseLsx = ''; I.sel = new Set(); I.undo = []; setGk(k => k + 1); };
@@ -2287,20 +2485,16 @@ function BomKanban({ active }) {
             <datalist id="lsx-bk-list">{lsxList.map(l => <option key={l} value={l} />)}</datalist>
             <button className="btn btn-primary" onClick={() => search()}><i className="fa-solid fa-magnifying-glass"></i> Tìm</button>
             {E.loaded && <span className="text-xs text-slate-500">{E.data.length} dòng · <b className="text-amber-600">{E.dirty.size} dòng đã sửa</b> · <b className="text-red-600">{E.sel.size} dòng đang chọn</b></span>}
-            <button className="btn btn-red ml-auto" onClick={deleteSel} {...dis(!E.sel.size)}><i className="fa-solid fa-trash"></i> Xoá dòng đã chọn ({E.sel.size})</button>
-            <button className="btn btn-green" onClick={saveEdit} {...dis(!E.dirty.size)}><i className="fa-solid fa-floppy-disk"></i> Lưu thay đổi ({E.dirty.size})</button>
+            <button className="btn btn-red ml-auto" onClick={deleteSel} {...dis(!E.sel.size || !can('bomkanban.delete'))}><i className="fa-solid fa-trash"></i> Xoá dòng đã chọn ({E.sel.size})</button>
+            <button className="btn btn-green" onClick={saveEdit} {...dis(!E.dirty.size || !can('bomkanban.edit'))}><i className="fa-solid fa-floppy-disk"></i> Lưu thay đổi ({E.dirty.size})</button>
           </>) : (<>
             <button className="btn btn-primary" onClick={() => setMode('edit')}><i className="fa-solid fa-pen"></i> Sửa Bom</button>
             <span className="font-bold text-slate-700 text-sm">Up BOM Kanban</span>
             <span className="text-xs text-slate-500">{importFilled().length} dòng mới sẽ lưu · {I.sel.size} dòng đang chọn</span>
-            <button className="btn ml-auto" onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setColPop({ x: b.left, y: b.bottom + 4 }); }}>
-              <i className="fa-solid fa-table-columns"></i> Cột{I.hidden.size ? ' (' + I.hidden.size + ' ẩn)' : ''}
-            </button>
-            <button className="btn" onClick={loadLatestBtn} {...dis(false)}><i className="fa-solid fa-clock-rotate-left"></i> Lệnh gần đây nhất</button>
-            <button className="btn" onClick={addRows}><i className="fa-solid fa-plus"></i> Thêm 100 dòng</button>
+            <button className="btn ml-auto" onClick={() => setCfgOpen(true)}><i className="fa-solid fa-sliders"></i> Cấu hình</button>
             <button className="btn" onClick={delLocal} {...dis(!I.sel.size)}><i className="fa-solid fa-eraser"></i> Bỏ dòng đã chọn</button>
             <button className="btn" onClick={clearImport}>Xoá hết</button>
-            <button className="btn btn-green" onClick={saveImport} {...dis(!importFilled().length)}><i className="fa-solid fa-floppy-disk"></i> Lưu vào Supabase</button>
+            <button className="btn btn-green" onClick={saveImport} {...dis(!importFilled().length || !can('bomkanban.up'))}><i className="fa-solid fa-floppy-disk"></i> Lưu vào Supabase</button>
           </>)}
         </div>
         <p className="text-xs text-gray-400 px-1">
@@ -2334,9 +2528,39 @@ function BomKanban({ active }) {
         {mode === 'edit' && loading && <div className="card p-6 text-center text-gray-400">Đang tải…</div>}
         {mode === 'edit' && !loading && !E.loaded && <div className="card p-6 text-center text-gray-400">Nhập lệnh sản xuất rồi nhấn Enter để hiển thị dữ liệu cần sửa.</div>}
         {mode === 'edit' && !loading && E.loaded && !E.data.length && <div className="card p-6 text-center text-gray-400">Không tìm thấy lệnh sản xuất “{E.loaded}”.</div>}
-        {mode === 'edit' && !loading && E.data.length > 0 && <SheetGrid key={'e' + gk} store={E} onChange={re} canAdd={false} />}
-        {mode === 'import' && <SheetGrid key={'i' + gk} store={I} onChange={re} canAdd={true} />}
+        {mode === 'edit' && !loading && E.data.length > 0 && <SheetGrid key={'e' + gk} store={E} onChange={re} canAdd={false} locked={!can('bomkanban.edit')} />}
+        {mode === 'import' && <button className="btn btn-primary" onClick={() => setMode('edit')} {...dis(!can('bomkanban.edit'))}><i className="fa-solid fa-pen"></i> Sửa Bom</button>
       </div>
+
+            {cfgOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 no-print" onClick={() => setCfgOpen(false)}>
+          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl" onClick={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-4"><i className="fa-solid fa-sliders text-primary mr-2"></i>Cấu hình Up BOM</h2>
+
+            <p className="text-xs font-bold text-slate-500 mb-2">Số lệnh gần nhất hiển thị ở vùng xám</p>
+            <div className="flex gap-2 mb-1">
+              {[1, 2, 3, 4, 5].map(n => (
+                <button key={n} className={'pill ' + (lastN === n ? 'on' : '')} onClick={() => pickLastN(n)} disabled={!!busy}>{n} lệnh</button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mb-4">Chọn 2 sẽ hiện 2 lệnh cuối cùng trong Supabase (đồng bộ với Sheet), lệnh mới nhất nằm sát vùng dán. Mặc định 1 lệnh.</p>
+
+            <p className="text-xs font-bold text-slate-500 mb-2">Cột hiển thị</p>
+            <div className="mb-4">
+              <button className="btn" onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setColPop({ x: b.left, y: b.bottom + 4 }); }}>
+                <i className="fa-solid fa-table-columns"></i> Chọn cột hiển thị{I.hidden.size ? ' (' + I.hidden.size + ' ẩn)' : ''}
+              </button>
+            </div>
+
+            <p className="text-xs font-bold text-slate-500 mb-2">Thêm dòng trống</p>
+            <button className="btn mb-6" onClick={addRows}><i className="fa-solid fa-plus"></i> Thêm 100 dòng</button>
+
+            <div className="flex justify-end">
+              <button className="btn btn-primary" onClick={() => setCfgOpen(false)}>Xong</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {colPop && <ColPickPop store={I} pos={colPop} onChange={re} onClose={() => setColPop(null)} />}
 
@@ -2704,59 +2928,192 @@ function BomDonHang({ active }) {
 // =====================================================================
 // 8. PHÂN QUYỀN — danh sách người dùng/vai trò thủ công (bảng "NguoiDung")
 // =====================================================================
+// Danh sách quyền: [mã quyền, tên hiển thị]. Muốn thêm quyền mới chỉ cần thêm vào đây rồi dùng can('mã quyền') ở chỗ cần chặn.
+const PERM_GROUPS = [
+  { title: 'Xem menu', items: [
+    ['menu.dashboard', 'Dashboard'], ['menu.bom', 'Tiến độ chung'], ['menu.tracuu', 'Tổng hợp đơn hàng'],
+    ['menu.indonhang', 'In đơn hàng'], ['menu.kanban', 'Kanban'], ['menu.bomkanban', 'BOM Kanban'],
+    ['menu.bomdonhang', 'BOM Đơn hàng'], ['menu.phanquyen', 'Phân quyền (chỉ xem)'] ] },
+  { title: 'Tiến độ chung', items: [['bom.import', 'Nhập BOM từ CSV']] },
+  { title: 'Tổng hợp đơn hàng', items: [['tracuu.tick', 'Tick Nhận vật tư / Giao hàng / GCN']] },
+  { title: 'In đơn hàng', items: [['indonhang.print', 'In đơn hàng'], ['indonhang.bus', 'Dùng mẫu In ĐH BUS']] },
+  { title: 'Kanban', items: [['kanban.print', 'In tem Kanban']] },
+  { title: 'BOM Kanban', items: [
+    ['bomkanban.up', 'Up BOM (dán và lưu lệnh mới)'],
+    ['bomkanban.edit', 'Sửa BOM (chế độ Sửa Bom và lưu)'],
+    ['bomkanban.delete', 'Xoá dòng BOM (cần kèm quyền Sửa BOM)'] ] },
+];
+
+function Switch({ on, onChange, disabled }) {
+  return <button type="button" className={'sw' + (on ? ' on' : '')} disabled={disabled} onClick={onChange} aria-pressed={on}></button>;
+}
+
 function PhanQuyen() {
+  const { user: me, token } = useAuth();
+  const isAdmin = me.role === 'admin';
   const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [newName, setNewName] = useState('');
-  const roles = ['admin', 'qltx', 'user', 'viewer'];
+  const [loading, setLoading] = useState(isAdmin);
+  const [selId, setSelId] = useState(me.id);
+  const [modal, setModal] = useState(null);                 // { mode: 'new' | 'name' | 'pass' | 'del', user }
+  const [fm, setFm] = useState({ username: '', name: '', pass: '', role: 'user' });
+  const [saving, setSaving] = useState(false);
+  const queue = useRef(Promise.resolve());
 
-  useEffect(() => { load(); }, []);
+  const list = isAdmin ? users : [me];
+  const cur = list.find(x => x.id === selId) || list[0];
+  const has = (u, k) => u.role === 'admin' || !!(u.perms && u.perms[k]);
+  const editable = isAdmin && cur && cur.role !== 'admin';
 
-  const load = async () => {
+  const load = async (pick) => {
+    if (!isAdmin) return;
     setLoading(true);
-    const { data, error } = await supabase.from('NguoiDung').select('*').order('created_at');
-    if (!error) setUsers(data || []);
+    const { data, error } = await supabase.rpc('app_users_list', { p_token: token });
+    if (error) notify('error', 'Không tải được danh sách', error.message);
+    else { setUsers(data || []); setSelId(id => pick || ((data || []).some(x => x.id === id) ? id : (data && data[0] ? data[0].id : id))); }
     setLoading(false);
   };
+  useEffect(() => { load(); }, [isAdmin]);
 
-  const updateRole = async (id, role) => {
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, role } : u));
-    const { error } = await supabase.from('NguoiDung').update({ role }).eq('id', id);
-    if (error) alert('Lỗi cập nhật quyền: ' + error.message);
+  const patchLocal = (id, patch) => setUsers(p => p.map(x => x.id === id ? { ...x, ...patch } : x));
+  // Lưu quyền theo hàng đợi: bấm nhanh nhiều công tắc vẫn lưu đúng thứ tự
+  const savePerms = (u, perms) => {
+    queue.current = queue.current.then(async () => {
+      const { error } = await supabase.rpc('app_user_update', { p_token: token, p_id: u.id, p_perms: perms });
+      if (error) { notify('error', 'Không lưu được quyền', error.message); load(); }
+    });
+  };
+  const toggle = (u, k) => {
+    if (!editable) return;
+    const perms = { ...(u.perms || {}) };
+    if (perms[k]) delete perms[k]; else perms[k] = true;
+    patchLocal(u.id, { perms }); savePerms(u, perms);
+  };
+  const setGroup = (u, g, val) => {
+    if (!editable) return;
+    const perms = { ...(u.perms || {}) };
+    g.items.forEach(([k]) => { if (val) perms[k] = true; else delete perms[k]; });
+    patchLocal(u.id, { perms }); savePerms(u, perms);
+  };
+  const changeRole = async (u, role) => {
+    const { data, error } = await supabase.rpc('app_user_update', { p_token: token, p_id: u.id, p_role: role });
+    if (error) return notify('error', 'Không đổi được vai trò', error.message);
+    patchLocal(u.id, data);
+  };
+  const toggleActive = async (u) => {
+    const { data, error } = await supabase.rpc('app_user_update', { p_token: token, p_id: u.id, p_active: !u.active });
+    if (error) return notify('error', 'Không thực hiện được', error.message);
+    patchLocal(u.id, data);
+    notify('success', u.active ? 'Đã khoá tài khoản' : 'Đã mở khoá tài khoản', u.username);
   };
 
-  const addUser = async () => {
-    if (!newName.trim()) return;
-    const { error } = await supabase.from('NguoiDung').insert([{ full_name: newName.trim(), role: 'user' }]);
-    if (error) alert('Lỗi thêm người dùng: ' + error.message);
-    else { setNewName(''); load(); }
+  const openModal = (mode, user) => { setFm({ username: '', name: user ? (user.full_name || '') : '', pass: '', role: 'user' }); setModal({ mode, user }); };
+  const submitModal = async () => {
+    setSaving(true);
+    try {
+      let r;
+      if (modal.mode === 'new') r = await supabase.rpc('app_user_create', { p_token: token, p_username: fm.username, p_full_name: fm.name, p_pass: fm.pass, p_role: fm.role });
+      else if (modal.mode === 'name') r = await supabase.rpc('app_user_update', { p_token: token, p_id: modal.user.id, p_full_name: fm.name });
+      else if (modal.mode === 'pass') r = await supabase.rpc('app_user_setpass', { p_token: token, p_id: modal.user.id, p_new: fm.pass });
+      else r = await supabase.rpc('app_user_delete', { p_token: token, p_id: modal.user.id });
+      if (r.error) throw new Error(r.error.message);
+      const msg = { new: 'Đã tạo tài khoản', name: 'Đã đổi tên', pass: 'Đã đổi mật khẩu', del: 'Đã xoá tài khoản' }[modal.mode];
+      notify('success', msg, modal.mode === 'new' ? fm.username : modal.user && modal.user.username);
+      const mode = modal.mode; setModal(null);
+      await load(mode === 'new' && r.data ? r.data.id : (mode === 'del' ? me.id : undefined));
+    } catch (e) { notify('error', 'Không thực hiện được', e.message || String(e)); }
+    setSaving(false);
   };
+  const titleOf = { new: 'Thêm tài khoản', name: 'Sửa tên hiển thị', pass: 'Đổi mật khẩu', del: 'Xoá tài khoản' };
 
   return (
-    <div className="space-y-3">
-      <div className="card p-3 flex items-center gap-3">
-        <input value={newName} onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addUser()} placeholder="Tên người dùng mới…" className="inp" style={{ width: 260 }} />
-        <button onClick={addUser} className="btn btn-primary"><i className="fa-solid fa-plus"></i> Thêm</button>
+    <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', height: 'calc(100vh - 96px)' }}>
+      {/* Danh sách tài khoản */}
+      <div className="card" style={{ width: 280, flex: '0 0 280px', height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+        <div className="p-3 flex items-center gap-2" style={{ borderBottom: '1px solid #e5ebf3' }}>
+          <b className="text-sm text-slate-700">Tài khoản</b>
+          {isAdmin && <button className="btn btn-primary ml-auto" onClick={() => openModal('new')}><i className="fa-solid fa-user-plus"></i> Thêm</button>}
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {loading ? <p className="p-4 text-sm text-gray-400">Đang tải…</p> : list.map(u => (
+            <div key={u.id} className={'pq-user' + (cur && cur.id === u.id ? ' on' : '')} onClick={() => setSelId(u.id)}>
+              <div className="font-bold text-sm text-slate-800">{u.full_name || u.username}</div>
+              <div className="text-xs text-slate-500">{u.username} · {u.role === 'admin' ? 'Admin' : 'Người dùng'}{!u.active ? ' · Đã khoá' : ''}</div>
+            </div>
+          ))}
+        </div>
       </div>
-      <div className="card overflow-auto">
-        <table className="erp">
-          <thead><tr><th style={{ textAlign: 'left' }}>Họ tên</th><th style={{ textAlign: 'left' }}>Vai trò</th></tr></thead>
-          <tbody>
-            {loading ? <tr><td colSpan="2" className="text-center py-6 text-gray-400">Đang tải…</td></tr> :
-              users.length === 0 ? <tr><td colSpan="2" className="text-center py-6 text-gray-400">Chưa có người dùng nào.</td></tr> :
-              users.map(u => (
-                <tr key={u.id}>
-                  <td>{u.full_name || '—'}</td>
-                  <td>
-                    <select value={u.role || 'user'} onChange={e => updateRole(u.id, e.target.value)} className="inp" style={{ padding: '3px 8px' }}>
-                      {roles.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
+
+      {/* Quyền chi tiết */}
+      <div className="card" style={{ flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', padding: 18 }}>
+        {cur && (<>
+          <div className="flex flex-wrap items-start gap-3 mb-3">
+            <div>
+              <div className="text-lg font-extrabold text-slate-800">{cur.full_name || cur.username}</div>
+              <div className="text-xs text-slate-500">{cur.username} · {cur.role === 'admin' ? 'Admin' : 'Người dùng'} · {cur.active ? 'Đang dùng' : 'Đã khoá'}{cur.id === me.id ? ' · Bạn' : ''}</div>
+            </div>
+            {isAdmin && (
+              <div className="flex flex-wrap items-center gap-2 ml-auto">
+                <select className="inp" value={cur.role} disabled={cur.id === me.id} onChange={e => changeRole(cur, e.target.value)} style={{ padding: '6px 8px', fontSize: 12 }}>
+                  <option value="user">Người dùng</option><option value="admin">Admin</option>
+                </select>
+                <button className="btn" onClick={() => openModal('name', cur)}>Sửa tên</button>
+                <button className="btn" onClick={() => openModal('pass', cur)}>Đổi MK</button>
+                {cur.id !== me.id && <button className="btn" onClick={() => toggleActive(cur)}>{cur.active ? 'Khoá' : 'Mở khoá'}</button>}
+                {cur.id !== me.id && <button className="btn btn-red" onClick={() => openModal('del', cur)}>Xoá</button>}
+              </div>
+            )}
+          </div>
+          {cur.role === 'admin' && <p className="text-xs text-slate-500 mb-3">Admin luôn có toàn quyền.</p>}
+          {!isAdmin && <p className="text-xs text-amber-600 mb-3">Bạn chỉ có quyền xem. Chỉ Admin mới thay đổi được phân quyền.</p>}
+
+          <div className="space-y-3">
+            {PERM_GROUPS.map(g => (
+              <div className="pq-box" key={g.title}>
+                <div className="flex items-center gap-3">
+                  <h4>{g.title}</h4>
+                  {editable && g.items.length > 1 && (<>
+                    <button className="text-xs font-semibold text-primary ml-auto" onClick={() => setGroup(cur, g, true)}>Bật hết</button>
+                    <button className="text-xs font-semibold text-slate-500" onClick={() => setGroup(cur, g, false)}>Tắt hết</button>
+                  </>)}
+                </div>
+                <div className="pq-grid">
+                  {g.items.map(([k, label]) => (
+                    <div className="pq-row" key={k}>
+                      <Switch on={has(cur, k)} disabled={!editable} onChange={() => toggle(cur, k)} />
+                      <span>{label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        </>)}
       </div>
+
+      {modal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50" onMouseDown={() => setModal(null)}>
+          <div className="bg-white p-6 rounded-2xl w-full max-w-sm shadow-2xl" onMouseDown={e => e.stopPropagation()}>
+            <h2 className="text-lg font-bold mb-4">{titleOf[modal.mode]}</h2>
+            <div className="space-y-3">
+              {modal.mode === 'new' && (<>
+                <input className="inp w-full" placeholder="Tên đăng nhập (viết liền, tối thiểu 3 ký tự)" value={fm.username} onChange={e => setFm({ ...fm, username: e.target.value })} autoFocus />
+                <input className="inp w-full" placeholder="Họ tên hiển thị" value={fm.name} onChange={e => setFm({ ...fm, name: e.target.value })} />
+                <input className="inp w-full" type="password" placeholder="Mật khẩu (tối thiểu 6 ký tự)" value={fm.pass} onChange={e => setFm({ ...fm, pass: e.target.value })} />
+                <select className="inp w-full" value={fm.role} onChange={e => setFm({ ...fm, role: e.target.value })}>
+                  <option value="user">Người dùng</option><option value="admin">Admin</option>
+                </select>
+              </>)}
+              {modal.mode === 'name' && <input className="inp w-full" placeholder="Họ tên hiển thị" value={fm.name} onChange={e => setFm({ ...fm, name: e.target.value })} autoFocus />}
+              {modal.mode === 'pass' && <input className="inp w-full" type="password" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)" value={fm.pass} onChange={e => setFm({ ...fm, pass: e.target.value })} autoFocus />}
+              {modal.mode === 'del' && <p className="text-sm text-slate-600">Xoá tài khoản <b>{modal.user.username}</b>? Thao tác này không thể hoàn tác.</p>}
+            </div>
+            <div className="flex justify-end gap-3 mt-5">
+              <button className="btn" onClick={() => setModal(null)}>Hủy</button>
+              <button className={'btn ' + (modal.mode === 'del' ? 'btn-red' : 'btn-primary')} disabled={saving} onClick={submitModal}>{saving ? 'Đang lưu…' : (modal.mode === 'del' ? 'Xoá' : 'Lưu')}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2768,8 +3125,8 @@ const MENU = [
   { group: 'Tổng hợp', icon: 'fa-chart-pie', items: [
     { id: 'dashboard', name: 'Dashboard', icon: 'fa-gauge-high' } ] },
   { group: 'Theo dõi sản xuất', icon: 'fa-chart-column', items: [
-    { id: 'tracuu', name: 'Tra cứu', icon: 'fa-table-list', badge: 'tracuu' },
-    { id: 'bom', name: 'BOM', icon: 'fa-cubes' } ] },
+    { id: 'bom', name: 'Tiến độ chung', icon: 'fa-cubes' },
+    { id: 'tracuu', name: 'Tổng hợp đơn hàng', icon: 'fa-table-list', badge: 'tracuu' } ] },
   { group: 'Đơn hàng', icon: 'fa-clipboard-list', items: [
     { id: 'indonhang', name: 'In đơn hàng', icon: 'fa-print' },
     { id: 'kanban', name: 'Kanban', icon: 'fa-tags', badge: 'kanban' },
@@ -2779,7 +3136,7 @@ const MENU = [
     { id: 'phanquyen', name: 'Phân quyền', icon: 'fa-user-shield' } ] },
 ];
 
-function Sidebar({ currentPage, setCurrentPage, collapsed, setCollapsed, counts }) {
+function Sidebar({ menu, currentPage, setCurrentPage, collapsed, setCollapsed, counts }) {
   return (
     <aside className={'sb h-full bg-white border-r border-gray-200 flex flex-col ' + (collapsed ? 'collapsed' : '')}>
       {/* Logo: cao đúng 56px bằng thanh header (h-14) nên hai đường kẻ ngang thẳng hàng, thu gọn vẫn thấy logo */}
@@ -2788,7 +3145,7 @@ function Sidebar({ currentPage, setCurrentPage, collapsed, setCollapsed, counts 
       </div>
 
       <nav className="flex-1 overflow-y-auto py-2">
-        {MENU.map(g => (
+        {(menu || MENU).map(g => (
           <div key={g.group}>
             <div className="sb-group" title={g.group}>
               <i className={`fa-solid ${g.icon}`}></i>{!collapsed && <span>{g.group}</span>}
@@ -2815,10 +3172,15 @@ function Sidebar({ currentPage, setCurrentPage, collapsed, setCollapsed, counts 
 }
 
 function MainApp() {
+  const { user, can, logout } = useAuth();
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem('sb_collapsed') === '1'; } catch (e) { return false; } });
   const [counts, setCounts] = useState({});
   const [visited, setVisited] = useState({});          // tab nào đã mở thì giữ lại (ẩn đi chứ không huỷ) để không mất lệnh đang chọn
+  const menu = useMemo(() => MENU.map(g => ({ ...g, items: g.items.filter(it => can('menu.' + it.id)) })).filter(g => g.items.length), [user]);
+  const firstId = menu.length ? menu[0].items[0].id : '';
+  const ok = (id) => can('menu.' + id);
+  useEffect(() => { if (firstId && !can('menu.' + currentPage)) setCurrentPage(firstId); }, [user, currentPage]);
   useEffect(() => { setVisited(v => v[currentPage] ? v : { ...v, [currentPage]: true }); }, [currentPage]);
 
   useEffect(() => { try { localStorage.setItem('sb_collapsed', collapsed ? '1' : '0'); } catch (e) {} }, [collapsed]);
@@ -2843,21 +3205,23 @@ function MainApp() {
   return (
     <div className="app-shell flex h-screen overflow-hidden">
       <ToastHost />
-      <div className="no-print h-screen"><Sidebar currentPage={currentPage} setCurrentPage={setCurrentPage} collapsed={collapsed} setCollapsed={setCollapsed} counts={counts} /></div>
+      <div className="no-print h-screen"><Sidebar menu={menu} currentPage={currentPage} setCurrentPage={setCurrentPage} collapsed={collapsed} setCollapsed={setCollapsed} counts={counts} /></div>
       <div className="app-col flex-1 flex flex-col min-w-0 h-screen">
         <header className="no-print h-14 flex items-center justify-end gap-3 px-6 bg-white border-b border-gray-200">
-          <span className="text-xs font-semibold text-slate-600"><i className="fa-solid fa-user mr-1.5 text-primary"></i>Admin</span>
+          <span className="text-xs font-semibold text-slate-600"><i className="fa-solid fa-user mr-1.5 text-primary"></i>{user.full_name || user.username}{user.role === 'admin' ? ' · Admin' : ''}</span>
           <button className="btn" onClick={() => location.reload()}><i className="fa-solid fa-rotate"></i> Làm mới</button>
+          <button className="btn" onClick={logout}><i className="fa-solid fa-right-from-bracket"></i> Đăng xuất</button>
         </header>
         <main className="app-main flex-1 overflow-y-auto p-5">
-          {currentPage === 'dashboard' && <Dashboard />}
-          {currentPage === 'tracuu' && <TraCuu />}
-          {currentPage === 'bom' && <Bom />}
-          {visited.indonhang && <div style={{ display: currentPage === 'indonhang' ? 'block' : 'none' }}><InDonHang /></div>}
-          {visited.kanban && <div style={{ display: currentPage === 'kanban' ? 'block' : 'none' }}><Kanban active={currentPage === 'kanban'} /></div>}
-          {visited.bomkanban && <div style={{ display: currentPage === 'bomkanban' ? 'block' : 'none' }}><BomKanban active={currentPage === 'bomkanban'} /></div>}
-          {visited.bomdonhang && <div style={{ display: currentPage === 'bomdonhang' ? 'block' : 'none' }}><BomDonHang active={currentPage === 'bomdonhang'} /></div>}
-          {currentPage === 'phanquyen' && <PhanQuyen />}
+          {!firstId && <div className="card p-8 text-center text-gray-500">Tài khoản của bạn chưa được cấp quyền nào. Vui lòng liên hệ Admin.</div>}
+          {currentPage === 'dashboard' && ok('dashboard') && <Dashboard />}
+          {currentPage === 'tracuu' && ok('tracuu') && <TraCuu />}
+          {currentPage === 'bom' && ok('bom') && <Bom />}
+          {visited.indonhang && ok('indonhang') && <div style={{ display: currentPage === 'indonhang' ? 'block' : 'none' }}><InDonHang /></div>}
+          {visited.kanban && ok('kanban') && <div style={{ display: currentPage === 'kanban' ? 'block' : 'none' }}><Kanban active={currentPage === 'kanban'} /></div>}
+          {visited.bomkanban && ok('bomkanban') && <div style={{ display: currentPage === 'bomkanban' ? 'block' : 'none' }}><BomKanban active={currentPage === 'bomkanban'} /></div>}
+          {visited.bomdonhang && ok('bomdonhang') && <div style={{ display: currentPage === 'bomdonhang' ? 'block' : 'none' }}><BomDonHang active={currentPage === 'bomdonhang'} /></div>}
+          {currentPage === 'phanquyen' && ok('phanquyen') && <PhanQuyen />}
         </main>
       </div>
     </div>
@@ -2865,7 +3229,7 @@ function MainApp() {
 }
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
-root.render(<MainApp />);
+root.render(<AppGate />);
 </script>
 </body>
 </html>
