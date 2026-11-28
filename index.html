@@ -285,6 +285,40 @@ button, input, select, textarea { font-family: inherit; }
   .pq-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(260px,1fr)); gap:10px 24px; margin-top:10px; }
   .pq-row { display:flex; align-items:center; gap:10px; font-size:13px; }
 
+    /* ---------- Bảng thông tin dùng chung: kéo dãn cột + bộ lọc kiểu Excel ---------- */
+  table.erp.ft { table-layout:fixed; }
+  table.erp.ft thead tr { height:38px; }
+  table.erp.ft thead tr.sub th { top:38px; }
+  table.erp.ft thead th { white-space:normal; line-height:1.15; font-size:11.5px; padding:0 8px 0 28px; }
+  table.erp.ft thead th[colspan] { padding:0 8px; }
+  table.erp.ft td { overflow:hidden; text-overflow:ellipsis; }
+  table.erp.ft td.wr { white-space:normal; overflow-wrap:anywhere; }
+  table.erp.ft td.g100 { background:#4ade80; font-weight:700; }
+  table.erp.ft th.fz, table.erp.ft td.fz { position:sticky; left:0; }                 /* cột đầu cố định khi cuộn ngang */
+  table.erp.ft td.fz { z-index:4; background:#fff; }
+  table.erp.ft td.fz.key { background:#f7edcb; }
+  table.erp.ft thead th.fz { z-index:14; }
+  .ft-flt { position:absolute; left:4px; top:50%; transform:translateY(-50%); width:20px; height:20px; border:0; border-radius:4px;
+            background:rgba(255,255,255,.75); color:#475569; font-size:10px; padding:0; cursor:pointer; z-index:3; }
+  .ft-flt:hover { background:#fff; color:#1d4ed8; }
+  .ft-flt.on { background:#2563eb; color:#fff; }
+  .ft-rs { position:absolute; top:0; bottom:0; right:0; width:7px; cursor:col-resize; z-index:4; }
+  .ft-rs:hover, .ft-rs:active { background:rgba(253,224,71,.85); }
+
+  /* ---------- Khung kéo thả file Excel ---------- */
+  .drop-ov { position:absolute; inset:0; margin:0 !important; z-index:60; display:flex; align-items:center; justify-content:center;
+             background:rgba(37,99,235,.08); border:2px dashed #2563eb; border-radius:14px; pointer-events:none; }
+  .drop-ov > div { background:#fff; padding:22px 36px; border-radius:16px; box-shadow:0 18px 45px rgba(15,23,42,.25);
+                   display:flex; flex-direction:column; align-items:center; gap:6px; color:#1d4ed8; font-size:15px; }
+  .drop-ov i { font-size:36px; color:#16a34a; }
+  .drop-ov span { font-size:12px; color:#64748b; }
+
+  /* ---------- Nút đăng xuất ở cuối sidebar ---------- */
+  .sb-logout { display:flex; align-items:center; gap:10px; width:100%; padding:13px 22px; border-top:1px solid #e5ebf3; color:#dc2626;
+               font-size:13px; font-weight:600; cursor:pointer; background:#fff; }
+  .sb-logout:hover { background:#fef2f2; }
+  .sb.collapsed .sb-logout { justify-content:center; padding:13px 0; }
+
 </style>
 </head>
 <body>
@@ -306,6 +340,7 @@ const TB_TIEN = "KQ_Tien";
 const TB_PHAY = "KQ_Phay";
 const TB_NGUOI = "KQ_Nguoi";
 const TB_KANBAN = "Bomkanban";   // MỚI: dữ liệu sheet "BOM TỔNG VÀO" (cột col_a ... col_fa)
+const TB_TIENDO = "TienDo_DH";   // Tiến độ đơn hàng (nhập từ Excel)
 const TB_PKH = "LSX_PKH";        // Số đơn hàng / Khách hàng / Ngày hoàn thành theo LSX
 
 // Logo THACO: để trống = dùng logo chữ vẽ sẵn. Có file logo thật thì điền đường dẫn, ví dụ "logo-thaco.png"
@@ -503,21 +538,28 @@ const AuthCtx = createContext(null);
 const useAuth = () => useContext(AuthCtx);
 const TOKEN_KEY = 'app_token_v1';
 
+const LAST_USER_KEY = 'app_last_user_v1';
+const loadLastUser = () => { try { const o = JSON.parse(localStorage.getItem(LAST_USER_KEY)); if (o && o.username) return o; } catch (e) {} return null; };
+const saveLastUser = (u) => { try { if (u && u.username) localStorage.setItem(LAST_USER_KEY, JSON.stringify({ username: u.username, full_name: u.full_name || '' })); } catch (e) {} };
+
 function LoginScreen({ onLogin }) {
-  const [u, setU] = useState('');
+  const [last, setLast] = useState(loadLastUser);                       // người đã đăng nhập lần trước
+  const [u, setU] = useState(() => { const l = loadLastUser(); return l ? l.username : ''; });
   const [p, setP] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const submit = async () => {
-    if (!u.trim() || !p) { setErr('Hãy nhập tên đăng nhập và mật khẩu.'); return; }
+    if (!u.trim() || !p) { setErr(last ? 'Hãy nhập mật khẩu.' : 'Hãy nhập tên đăng nhập và mật khẩu.'); return; }
     setBusy(true); setErr('');
     try {
       const { data, error } = await supabase.rpc('app_login', { p_user: u.trim(), p_pass: p });
       if (error) throw new Error(error.message);
+      saveLastUser(data.user);
       onLogin(data);
     } catch (e) { setErr(e.message || String(e)); }
     setBusy(false);
   };
+  const other = () => { try { localStorage.removeItem(LAST_USER_KEY); } catch (e) {} setLast(null); setU(''); setP(''); setErr(''); };
   const enter = (e) => { if (e.key === 'Enter') submit(); };
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20,
@@ -525,18 +567,33 @@ function LoginScreen({ onLogin }) {
       <div className="card" style={{ width: 'min(400px,100%)', padding: '34px 32px 28px', boxShadow: '0 25px 60px rgba(15,23,42,.18)' }}>
         <div style={{ display: 'flex', justifyContent: 'center' }}><Logo collapsed={false} /></div>
         <h1 className="text-center font-extrabold text-slate-800" style={{ fontSize: 19, marginTop: 12 }}>Production Control</h1>
-        <p className="text-center text-xs text-gray-500" style={{ marginBottom: 24 }}>Đăng nhập để tiếp tục</p>
-        <label className="text-xs font-bold text-slate-500">Tên đăng nhập</label>
-        <input className="inp w-full" style={{ marginTop: 4, marginBottom: 12 }} autoFocus value={u} autoComplete="username"
-               onChange={e => setU(e.target.value)} onKeyDown={enter} />
+        <p className="text-center text-xs text-gray-500" style={{ marginBottom: 22 }}>Đăng nhập để tiếp tục</p>
+
+        {last ? (<>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, background: '#eef4fd', borderRadius: 14, padding: '10px 16px', marginBottom: 14 }}>
+            <i className="fa-regular fa-circle-user" style={{ fontSize: 30, color: '#2563eb' }}></i>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 11.5, color: '#64748b', lineHeight: 1.2 }}>Xin chào</div>
+              <div style={{ fontSize: 15.5, fontWeight: 800, color: '#1e293b', lineHeight: 1.25, overflowWrap: 'anywhere' }}>{last.full_name || last.username}</div>
+            </div>
+          </div>
+          {/* ô tên ẩn để trình duyệt vẫn gợi ý / lưu mật khẩu đúng tài khoản */}
+          <input type="text" readOnly tabIndex={-1} autoComplete="username" value={u} style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none' }} />
+        </>) : (<>
+          <label className="text-xs font-bold text-slate-500">Tên đăng nhập</label>
+          <input className="inp w-full" style={{ marginTop: 4, marginBottom: 12 }} autoFocus value={u} autoComplete="username"
+                 onChange={e => setU(e.target.value)} onKeyDown={enter} />
+        </>)}
+
         <label className="text-xs font-bold text-slate-500">Mật khẩu</label>
-        <input type="password" className="inp w-full" style={{ marginTop: 4 }} value={p} autoComplete="current-password"
+        <input type="password" className="inp w-full" style={{ marginTop: 4 }} value={p} autoComplete="current-password" autoFocus={!!last}
                onChange={e => setP(e.target.value)} onKeyDown={enter} />
         {err && <div className="dlg-warn" style={{ textAlign: 'left' }}><i className="fa-solid fa-circle-exclamation"></i> {err}</div>}
         <button className="btn btn-primary w-full" disabled={busy} onClick={submit}
                 style={{ justifyContent: 'center', marginTop: 20, padding: '11px 16px', fontSize: 14 }}>
           {busy ? 'Đang đăng nhập…' : 'Đăng nhập'}
         </button>
+        {last && <button type="button" onClick={other} className="text-xs font-semibold text-primary" style={{ display: 'block', width: '100%', textAlign: 'center', marginTop: 14 }}>Đăng nhập bằng tài khoản khác</button>}
       </div>
     </div>
   );
@@ -554,6 +611,7 @@ function AppGate() {
         try { localStorage.removeItem(TOKEN_KEY); } catch (e) {}
         tokenRef.current = ''; setSt({ loading: false, user: null, token: '' }); return;
       }
+      saveLastUser(data);
       setSt(p => (p.token === t && JSON.stringify(p.user) === JSON.stringify(data)) ? p : { loading: false, user: data, token: t });
     } catch (e) { setSt(p => p.loading ? { ...p, loading: false } : p); }     // lỗi mạng: giữ nguyên
   };
@@ -656,14 +714,265 @@ const STAGES = [
   ['phay', 'Phay'], ['nguoi', 'Nguội'], ['nhiet', 'Nhiệt'],
 ];
 
+// =====================================================================
+// TIỆN ÍCH EXCEL — đọc file, khớp cột theo TÊN TIÊU ĐỀ, kéo thả, xuất
+// =====================================================================
+const nz = (s) => String(s == null ? '' : s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/gi, 'd').toLowerCase().replace(/[^a-z0-9%]+/g, '');
+const LSX_RE = /\d+\s*\/\s*\d+/;                                  // dạng mã lệnh: THUNG.121/04
+
+/** spec = { anchors: [tên chuẩn hoá của cột khoá], anchorLabel, cols: [{ key, label }] }
+ *  Trả về { rows: [{key: giá trị}], total, matched, missing: [tên cột không thấy] } */
+async function readExcelTable(file, spec) {
+  if (!/\.(xlsx|xlsm|xls|csv)$/i.test(file.name)) throw new Error('Chỉ nhận file Excel (.xlsx, .xls) hoặc .csv');
+  const buf = await file.arrayBuffer();
+  const wb = /\.csv$/i.test(file.name)
+    ? XLSX.read(new TextDecoder('utf-8').decode(buf), { type: 'string', raw: true })
+    : XLSX.read(buf, { type: 'array' });
+
+  // 1) tìm sheet + hàng tiêu đề có cột khoá (Lệnh sản xuất / LSX)
+  let aoa = null, hr = -1, ac = -1;
+  for (const name of wb.SheetNames) {
+    const a = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, raw: false, defval: '', blankrows: true });
+    for (let r = 0; r < Math.min(a.length, 40) && hr < 0; r++)
+      for (let c = 0; c < a[r].length; c++) if (spec.anchors.includes(nz(a[r][c]))) { hr = r; ac = c; break; }
+    if (hr >= 0) { aoa = a; break; }
+  }
+  if (!aoa) throw new Error('Không thấy cột "' + spec.anchorLabel + '" trong 40 dòng đầu của file (kiểm tra lại hàng tiêu đề).');
+
+  // 2) dòng dữ liệu đầu tiên = dòng có mã lệnh dạng xxx/yy; các dòng giữa là tiêu đề nhiều tầng
+  let fd = -1;
+  for (let r = hr + 1; r < aoa.length; r++) if (LSX_RE.test(String(aoa[r][ac] == null ? '' : aoa[r][ac]))) { fd = r; break; }
+  const byPattern = fd >= 0;
+  if (!byPattern) fd = hr + 1;
+
+  // 3) tên từng cột = ô có chữ nằm thấp nhất trong khối tiêu đề (bỏ ô chỉ có số thứ tự cột)
+  let width = 0;
+  for (let r = hr; r < fd; r++) width = Math.max(width, aoa[r].length);
+  const labels = [];
+  for (let c = 0; c < width; c++) {
+    let lab = '';
+    for (let r = fd - 1; r >= hr; r--) {
+      const t = String(aoa[r][c] == null ? '' : aoa[r][c]).trim();
+      if (t && !/^\d+$/.test(t)) { lab = t; break; }
+    }
+    labels.push(nz(lab));
+  }
+
+  // 4) khớp cột: trùng tên (cột lặp như "Tiến độ" khớp theo thứ tự xuất hiện), sau đó khớp đầu chuỗi
+  const idx = new Map();
+  labels.forEach((l, c) => { if (l) { if (!idx.has(l)) idx.set(l, []); idx.get(l).push(c); } });
+  const used = new Set(), colOf = new Array(spec.cols.length).fill(-1), seen = {};
+  spec.cols.forEach((col, i) => {
+    const l = nz(col.label);
+    seen[l] = (seen[l] == null ? 0 : seen[l] + 1);
+    const list = idx.get(l);
+    if (list && list[seen[l]] != null) { colOf[i] = list[seen[l]]; used.add(list[seen[l]]); }
+  });
+  spec.cols.forEach((col, i) => {                                  // vd "% KHO Giao Hàng (Tự động)"
+    if (colOf[i] >= 0) return;
+    const l = nz(col.label);
+    for (let c = 0; c < labels.length; c++) {
+      const x = labels[c];
+      if (used.has(c) || x.length < 4 || l.length < 4) continue;
+      if (x.startsWith(l) || l.startsWith(x)) { colOf[i] = c; used.add(c); break; }
+    }
+  });
+
+  // 5) đọc dữ liệu
+  const rows = [];
+  for (let r = fd; r < aoa.length; r++) {
+    const row = aoa[r];
+    const lsx = String(row[ac] == null ? '' : row[ac]).trim();
+    if (!lsx || /^\d+$/.test(lsx) || spec.anchors.includes(nz(lsx))) continue;
+    if (byPattern && !LSX_RE.test(lsx)) continue;                  // bỏ dòng tổng / ghi chú lẻ
+    const o = {};
+    spec.cols.forEach((col, i) => { const c = colOf[i]; o[col.key] = (c >= 0 && row[c] != null) ? String(row[c]).trim() : ''; });
+    rows.push(o);
+  }
+  return {
+    rows, total: spec.cols.length, matched: colOf.filter(x => x >= 0).length,
+    missing: Array.from(new Set(spec.cols.filter((c, i) => colOf[i] < 0).map(c => c.label))),
+  };
+}
+
+/** Xuất bảng ra Excel (1 hàng tiêu đề = tên cột; nhập lại vẫn khớp) */
+function exportXlsx(cols, rows, name) {
+  const aoa = [cols.map(c => c.label)].concat(rows.map(r => cols.map(c => c.type === 'bool' ? (r[c.key] ? 'TRUE' : '') : (r[c.key] == null ? '' : r[c.key]))));
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws['!cols'] = cols.map(c => ({ wch: Math.max(8, Math.round(c.w / 7)) }));
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Dữ liệu');
+  XLSX.writeFile(wb, name + '.xlsx');
+}
+
+/** Kéo thả file vào một vùng: const [over, dropProps] = useDropFile(onFile, enabled) */
+function useDropFile(onFile, enabled) {
+  const [over, setOver] = useState(false);
+  const cnt = useRef(0);
+  const isFiles = (e) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files');
+  return [over, {
+    onDragEnter: (e) => { if (!enabled || !isFiles(e)) return; e.preventDefault(); cnt.current++; setOver(true); },
+    onDragOver: (e) => { if (!enabled || !isFiles(e)) return; e.preventDefault(); },
+    onDragLeave: (e) => { if (!enabled) return; cnt.current = Math.max(0, cnt.current - 1); if (!cnt.current) setOver(false); },
+    onDrop: (e) => {
+      if (!enabled || !isFiles(e)) return;
+      e.preventDefault(); cnt.current = 0; setOver(false);
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) onFile(f);
+    },
+  }];
+}
+
+const DropOverlay = () => (
+  <div className="drop-ov no-print"><div>
+    <i className="fa-solid fa-file-excel"></i><b>Thả file Excel vào đây</b><span>Hệ thống tự khớp cột theo tên tiêu đề</span>
+  </div></div>
+);
+
+/** Hộp xem trước trước khi nhập: số dòng, số cột khớp, cột không thấy */
+function ImportPreview({ title, imp, busy, note, warn, okText, onOk, onCancel }) {
+  const { file, res } = imp;
+  return (
+    <div className="no-print" onMouseDown={() => { if (!busy) onCancel(); }}
+         style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(3px)' }}>
+      <div className="dlg" onMouseDown={e => e.stopPropagation()}>
+        <div className="dlg-ico blue"><i className="fa-solid fa-file-excel"></i></div>
+        <h3 className="dlg-title">{title}</h3>
+        <p className="dlg-msg" style={{ overflowWrap: 'anywhere' }}>{file.name}</p>
+        <div className="dlg-chips">
+          <span className="dlg-chip">{res.rows.length} dòng dữ liệu</span>
+          <span className="dlg-chip">{res.matched}/{res.total} cột khớp</span>
+        </div>
+        {res.missing.length > 0 && (
+          <div className="dlg-warn" style={{ background: '#fffbeb', borderColor: '#fde68a', color: '#92400e' }}>
+            <i className="fa-solid fa-circle-info"></i> Không thấy cột: {res.missing.join(', ')}
+          </div>
+        )}
+        {!res.rows.length && <div className="dlg-warn"><i className="fa-solid fa-triangle-exclamation"></i> Không đọc được dòng dữ liệu nào trong file.</div>}
+        {note && <p className="dlg-msg" style={{ marginTop: 12 }}>{note}</p>}
+        {warn && <div className="dlg-warn"><i className="fa-solid fa-triangle-exclamation"></i> {warn}</div>}
+        <div className="dlg-act">
+          <button className="btn" disabled={!!busy} onClick={onCancel}>Hủy</button>
+          <button className="btn btn-primary" disabled={!!busy || !res.rows.length} onClick={onOk}>{busy || okText || 'Nhập dữ liệu'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =====================================================================
+// BẢNG THÔNG TIN DÙNG CHUNG — header xanh, kéo dãn cột, bộ lọc / sắp xếp kiểu Excel
+//   cols: [{ key, label, w, grp?, type?:'bool', ctr?, wr?, hl?, fz?, pct? }]
+// =====================================================================
+function FilterTable({ id, cols, rows, loading, total, maxHeight, onToggle, canToggle }) {
+  const [colW, setColW] = useState(() => {
+    try { const a = JSON.parse(localStorage.getItem('ft_w_' + id)); if (Array.isArray(a) && a.length === cols.length) return a; } catch (e) {}
+    return cols.map(c => c.w);
+  });
+  useEffect(() => { try { localStorage.setItem('ft_w_' + id, JSON.stringify(colW)); } catch (e) {} }, [colW]);
+  const [flt, setFlt] = useState({});
+  const [srt, setSrt] = useState(null);
+  const [pop, setPop] = useState(null);
+  const hasGrp = cols.some(c => c.grp);
+  const sum = colW.reduce((a, b) => a + b, 0);
+  const txt = (r, c) => c.type === 'bool' ? (r[c.key] ? 'Có' : '') : (r[c.key] == null ? '' : String(r[c.key]));
+  const view = useMemo(() => rows.map(r => ({ r, v: cols.map(c => txt(r, c)) })), [rows, cols]);
+  const shown = useMemo(() => {
+    let a = view.filter(x => Object.keys(flt).every(c => flt[c].has(x.v[c])));
+    if (srt) a = a.slice().sort((p, q) => srt.dir * p.v[srt.c].localeCompare(q.v[srt.c], 'vi', { numeric: true }));
+    return a;
+  }, [view, flt, srt]);
+  const applyFlt = (c, s) => setFlt(p => { const n = { ...p }; if (s) n[c] = s; else delete n[c]; return n; });
+  const nFlt = Object.keys(flt).length;
+
+  const startResize = (e, i) => {
+    e.preventDefault(); e.stopPropagation();
+    const x0 = e.clientX, w0 = colW[i];
+    document.body.style.cursor = 'col-resize';
+    const mv = (ev) => { const w = Math.max(40, Math.round(w0 + ev.clientX - x0)); setColW(p => { const a = p.slice(); a[i] = w; return a; }); };
+    const up = () => { window.removeEventListener('mousemove', mv); window.removeEventListener('mouseup', up); document.body.style.cursor = ''; };
+    window.addEventListener('mousemove', mv); window.addEventListener('mouseup', up);
+  };
+  const mark = (i) => srt && srt.c === i ? (srt.dir > 0 ? ' ▲' : ' ▼') : '';
+  const tools = (i) => (<>
+    <button className={'ft-flt' + (flt[i] ? ' on' : '')} title="Lọc / sắp xếp" onMouseDown={e => e.stopPropagation()}
+      onClick={e => { const b = e.currentTarget.getBoundingClientRect(); setPop({ c: i, x: b.left, y: b.bottom + 4 }); }}>
+      <i className="fa-solid fa-filter"></i>
+    </button>
+    <span className="ft-rs" title="Kéo để chỉnh độ rộng · nhấp đúp để đặt lại" onMouseDown={e => startResize(e, i)}
+      onDoubleClick={() => setColW(p => { const a = p.slice(); a[i] = cols[i].w; return a; })} />
+  </>);
+  const nGrp = (g) => cols.filter(c => c.grp === g).length;
+  const cls = (c, t) => (c.hl ? 'key ' : '') + (c.ctr ? 'ctr ' : '') + (c.wr ? 'wr ' : '') + (c.fz ? 'fz ' : '') + (c.pct && parseFloat(t) >= 100 ? 'g100' : '');
+
+  return (<>
+    <div className="card overflow-auto" style={{ maxHeight: maxHeight || '68vh' }}>
+      <table className="erp ft" style={{ width: sum }}>
+        <colgroup>{colW.map((w, i) => <col key={i} style={{ width: w }} />)}</colgroup>
+        <thead>
+          <tr>
+            {cols.map((c, i) => {
+              if (c.grp) {
+                if (cols.findIndex(z => z.grp === c.grp) !== i) return null;
+                return <th key={i} colSpan={nGrp(c.grp)}>{c.grp}</th>;
+              }
+              return <th key={i} rowSpan={hasGrp ? 2 : 1} className={c.fz ? 'fz' : ''}>{c.label}{mark(i)}{tools(i)}</th>;
+            })}
+          </tr>
+          {hasGrp && <tr className="sub">{cols.map((c, i) => c.grp ? <th key={i}>{c.label}{mark(i)}{tools(i)}</th> : null)}</tr>}
+        </thead>
+        <tbody>
+          {loading ? (
+            <tr><td colSpan={cols.length} className="text-center py-8 text-gray-400">Đang tải…</td></tr>
+          ) : shown.length === 0 ? (
+            <tr><td colSpan={cols.length} className="text-center py-8 text-gray-400">Không tìm thấy dữ liệu.</td></tr>
+          ) : shown.map(({ r, v }, ri) => (
+            <tr key={r.id != null ? r.id : (r.ord != null ? r.ord : ri)}>
+              {cols.map((c, ci) => (
+                <td key={ci} className={cls(c, v[ci])}>
+                  {c.type === 'bool'
+                    ? <input type="checkbox" checked={!!r[c.key]} onChange={() => onToggle && onToggle(r, c.key)} disabled={!canToggle} className="w-4 h-4 accent-blue-600 cursor-pointer" />
+                    : v[ci]}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div className="flex items-center gap-3">
+      <p className="text-xs text-gray-400">{shown.length} / {total != null ? total : rows.length} dòng</p>
+      {(nFlt > 0 || srt) && <button className="btn" onClick={() => { setFlt({}); setSrt(null); }}><i className="fa-solid fa-filter-circle-xmark"></i> Xoá lọc ({nFlt})</button>}
+    </div>
+    {pop && <ColFilterPop pop={pop} view={view} cur={flt[pop.c]} onApply={applyFlt}
+            onSort={(c, d) => { setSrt({ c, dir: d }); setPop(null); }} onClose={() => setPop(null)} />}
+  </>);
+}
+
+// =====================================================================
+// 4. TỔNG HỢP ĐƠN HÀNG (bảng Bomdonhang) — lọc, kéo dãn cột, tick Nhận VT / Giao hàng / GCN, nhập Excel
+// =====================================================================
+const TC_COLS = BOM_COLUMNS.map(c => ({
+  ...c,
+  grp: QC_KEYS.includes(c.key) ? 'QUY CÁCH (PHÔI)' : undefined,
+  hl: KEY_COLS.includes(c.key),
+  ctr: c.w <= 90,
+}));
+const TC_IMPORT = TC_COLS.filter(c => c.key !== 'id_key');
+const TC_NUM = ['dai', 'rong', 'day', 'hinh_hop', 'dn', 'dt', 'sl_bo', 'sl_dh', 'khoi_luong'];
+const TC_BOOL = ['nhan_vat_tu', 'giao_hang', 'gcn'];
+
 function TraCuu() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState('');
   const [lsxSel, setLsxSel] = useState('');
   const [stage, setStage] = useState('all');
+  const [imp, setImp] = useState(null);
+  const [busy, setBusy] = useState('');
   const pendingSaves = useRef(new Set());
+  const fileRef = useRef(null);
   const { can } = useAuth();
+  const canImp = can('tracuu.import');
 
   useEffect(() => { load(); }, []);
 
@@ -690,7 +999,7 @@ function TraCuu() {
 
   const filtered = useMemo(() => base.filter(r => stage === 'all' || has(r, stage)), [base, stage]);
 
-  // Optimistic toggle cho Nhận VT / Giao hàng
+  // Optimistic toggle cho Nhận VT / Giao hàng / GCN
   const toggleBool = async (row, field) => {
     if (!can('tracuu.tick')) return;
     const key = row.id + '-' + field;
@@ -706,10 +1015,40 @@ function TraCuu() {
     pendingSaves.current.delete(key);
   };
 
-  const qcIdx = BOM_COLUMNS.findIndex(c => c.key === QC_KEYS[0]);
+  // ----- Nhập Excel (kéo thả hoặc bấm nút) -----
+  const onFile = async (f) => {
+    if (!canImp) return notify('warn', 'Không có quyền', 'Tài khoản của bạn chưa được cấp quyền nhập Excel.');
+    try { setImp({ file: f, res: await readExcelTable(f, { anchors: ['lsx', 'lenhsanxuat'], anchorLabel: 'LSX', cols: TC_IMPORT }) }); }
+    catch (e) { notify('error', 'Không đọc được file', e.message || String(e)); }
+  };
+  const doImport = async () => {
+    const out = imp.res.rows.map(o => {
+      const r = {};
+      TC_IMPORT.forEach(c => {
+        const v = o[c.key];
+        if (TC_BOOL.includes(c.key)) r[c.key] = /^(true|1|x|✔|✓|yes|có)$/i.test(v);
+        else if (TC_NUM.includes(c.key)) r[c.key] = v === '' ? null : v.replace(/^(-?\d+),(\d+)$/, '$1.$2');
+        else r[c.key] = v;
+      });
+      return r;
+    }).filter(r => r.lsx);
+    try {
+      let ins = 0, fail = 0;
+      for (let s = 0; s < out.length; s += 500) {
+        setBusy('Đang nhập… ' + Math.min(s + 500, out.length) + '/' + out.length);
+        const { data, error } = await supabase.rpc('import_bom_rows', { p_rows: out.slice(s, s + 500) });
+        if (error) throw new Error(error.message);
+        ins += (data && data.inserted) || 0; fail += (data && data.failed) || 0;
+      }
+      notify(fail ? 'warn' : 'success', 'Đã nhập Excel', ins + ' dòng thành công' + (fail ? ', ' + fail + ' dòng thất bại.' : '.'));
+      setImp(null); await load();
+    } catch (e) { notify('error', 'Nhập thất bại', e.message || String(e)); }
+    setBusy('');
+  };
+  const [over, dropProps] = useDropFile(onFile, canImp && !busy);
 
-  return (
-    <div className="space-y-3">
+  return (<>
+    <div className="space-y-3 relative" style={{ minHeight: 'calc(100vh - 120px)' }} {...dropProps}>
       {/* Thanh công cụ */}
       <div className="card p-3 flex flex-wrap items-center gap-3">
         <span className="text-xs font-bold text-slate-500">Lệnh sản xuất</span>
@@ -718,8 +1057,14 @@ function TraCuu() {
           {lsxOpts.map(l => <option key={l} value={l}>{l}</option>)}
         </select>
         <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm theo LSX / MSCT / Tên chi tiết / Sản phẩm…" className="inp" style={{ width: 340 }} />
-        <button className="btn ml-auto" onClick={load}><i className="fa-solid fa-rotate"></i> Làm mới</button>
+        <div className="ml-auto"></div>
+        {canImp && <button className="btn btn-green" onClick={() => fileRef.current && fileRef.current.click()}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>}
+        <button className="btn" onClick={() => exportXlsx(TC_IMPORT, rows, 'Tong-hop-don-hang')} disabled={!rows.length}><i className="fa-solid fa-download"></i> Xuất Excel</button>
+        <button className="btn" onClick={load}><i className="fa-solid fa-rotate"></i> Làm mới</button>
+        <input ref={fileRef} type="file" accept=".xlsx,.xlsm,.xls,.csv" style={{ display: 'none' }}
+               onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) onFile(f); }} />
       </div>
+      {canImp && <p className="text-xs text-gray-400 px-1">Kéo thả file Excel vào trang này để nhập. Hàng tiêu đề cần có các cột như bảng bên dưới (bấm “Xuất Excel” để lấy file mẫu).</p>}
 
       {/* Pill công đoạn */}
       <div className="card p-3 flex flex-wrap items-center gap-2">
@@ -731,173 +1076,97 @@ function TraCuu() {
         ))}
       </div>
 
-      {/* Bảng */}
-      <div className="card overflow-auto" style={{ maxHeight: '68vh' }}>
-        <table className="erp">
-          <thead>
-            <tr>
-              {BOM_COLUMNS.map((c, i) => {
-                if (QC_KEYS.includes(c.key)) {
-                  return i === qcIdx ? <th key="qc" colSpan={QC_KEYS.length}>QUY CÁCH (PHÔI)</th> : null;
-                }
-                return <th key={c.key} rowSpan={2} style={{ minWidth: c.w }}>{c.label}</th>;
-              })}
-            </tr>
-            <tr className="sub">
-              {BOM_COLUMNS.filter(c => QC_KEYS.includes(c.key)).map(c => <th key={c.key} style={{ minWidth: c.w }}>{c.label}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan={BOM_COLUMNS.length} className="text-center py-8 text-gray-400">Đang tải…</td></tr>
-            ) : filtered.length === 0 ? (
-              <tr><td colSpan={BOM_COLUMNS.length} className="text-center py-8 text-gray-400">Không tìm thấy dữ liệu.</td></tr>
-            ) : filtered.map(r => (
-              <tr key={r.id}>
-                {BOM_COLUMNS.map(c => (
-                  <td key={c.key} className={(KEY_COLS.includes(c.key) ? 'key ' : '') + (c.w <= 90 ? 'ctr' : '')}>
-                    {c.type === 'bool' ? (
-                      <input type="checkbox" checked={!!r[c.key]} onChange={() => toggleBool(r, c.key)} disabled={!can('tracuu.tick')} className="w-4 h-4 accent-blue-600 cursor-pointer" />
-                    ) : (r[c.key] ?? '')}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="text-xs text-gray-400">{filtered.length} / {rows.length} dòng</p>
+      <FilterTable id="tc" cols={TC_COLS} rows={filtered} loading={loading} total={rows.length} maxHeight="64vh"
+                   onToggle={toggleBool} canToggle={can('tracuu.tick')} />
+      {over && <DropOverlay />}
     </div>
-  );
+    {imp && <ImportPreview title="Nhập Excel vào Tổng hợp đơn hàng" imp={imp} busy={busy} okText="Nhập vào Supabase"
+              note="Các dòng được thêm vào bảng Bomdonhang, giống chức năng nhập CSV trước đây." onOk={doImport} onCancel={() => setImp(null)} />}
+  </>);
 }
 
 // =====================================================================
-// 5. BOM — danh sách LSX, xem chi tiết, nhập CSV
+// 5. TIẾN ĐỘ ĐƠN HÀNG (hình 5) — dữ liệu nhập từ Excel vào bảng TienDo_DH
 // =====================================================================
+const TD_GROUPS = [['dn', 'ĐÚC NHÔM'], ['cv', 'CƯA VÒNG'], ['tien', 'TIỆN'], ['phay', 'PHAY'], ['ng', 'NGUỘI'], ['nh', 'NHIỆT LUYỆN']];
+const TD_COLS = [
+  { key: 'lsx', label: 'Lệnh sản xuất', w: 140, hl: 1, fz: 1 },
+  { key: 'hang_muc', label: 'Hạng mục', w: 260, wr: 1 },
+  { key: 'ngay_giao', label: 'Ngày giao hàng', w: 100, ctr: 1 },
+  ...TD_GROUPS.flatMap(([p, g]) => [
+    { key: p + '_td',   label: 'Tiến độ',       grp: g, w: 84,  ctr: 1, pct: 1 },
+    { key: p + '_tong', label: 'Tổng chi tiết', grp: g, w: 92,  ctr: 1 },
+    { key: p + '_gc',   label: 'Gia công',      grp: g, w: 84,  ctr: 1 },
+    { key: p + '_con',  label: 'SL GC còn lại', grp: g, w: 100, ctr: 1 },
+  ]),
+  { key: 'td_dh', label: 'Tiến độ Đơn hàng', w: 110, ctr: 1, pct: 1 },
+  { key: 'nhan_vt', label: 'Tình trạng Nhận vật tư', w: 130, ctr: 1, pct: 1 },
+  { key: 'kho_gh', label: '% KHO Giao Hàng', w: 120, ctr: 1, pct: 1 },
+  { key: 'ghi_chu', label: 'Ghi chú', w: 220, wr: 1 },
+  { key: 'ngay_ht', label: 'Ngày hoàn thành', w: 110, ctr: 1 },
+];
+
 function Bom() {
-  const [orders, setOrders] = useState([]);
+  const { can, token } = useAuth();
+  const canImp = can('tiendo.import');
+  const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [selectedLsx, setSelectedLsx] = useState(null);
-  const [details, setDetails] = useState([]);
-  const [isImportOpen, setIsImportOpen] = useState(false);
-  const [importLsx, setImportLsx] = useState('');
-  const { can } = useAuth();
-  const [file, setFile] = useState(null);
+  const [q, setQ] = useState('');
+  const [imp, setImp] = useState(null);
+  const [busy, setBusy] = useState('');
+  const fileRef = useRef(null);
 
-  useEffect(() => { fetchOrders(); }, []);
-
-  const fetchOrders = async () => {
+  const load = async () => {
     setLoading(true);
-    const { data } = await supabase.from(TB_BOM).select('lsx, san_pham, khgh').order('created_at', { ascending: false });
-    const map = new Map();
-    (data || []).forEach(d => { if (!map.has(d.lsx)) map.set(d.lsx, d); });
-    setOrders(Array.from(map.values()));
+    try { setRows(await fetchAll(() => supabase.from(TB_TIENDO).select('*').order('ord'))); }
+    catch (e) { notify('error', 'Không tải được tiến độ đơn hàng', (e.message || String(e)) + ' — đã chạy SQL tạo bảng TienDo_DH chưa?'); }
     setLoading(false);
   };
+  useEffect(() => { load(); }, []);
 
-  const viewDetails = async (lsx) => {
-    setSelectedLsx(lsx);
-    const { data } = await supabase.from(TB_BOM).select('*').eq('lsx', lsx).order('stt_ct');
-    setDetails(data || []);
+  const filtered = useMemo(() => {
+    const s = q.trim().toLowerCase();
+    return s ? rows.filter(r => (r.lsx || '').toLowerCase().includes(s) || (r.hang_muc || '').toLowerCase().includes(s)) : rows;
+  }, [rows, q]);
+
+  const onFile = async (f) => {
+    if (!canImp) return notify('warn', 'Không có quyền', 'Tài khoản của bạn chưa được cấp quyền nhập tiến độ từ Excel.');
+    try { setImp({ file: f, res: await readExcelTable(f, { anchors: ['lsx', 'lenhsanxuat'], anchorLabel: 'Lệnh sản xuất', cols: TD_COLS }) }); }
+    catch (e) { notify('error', 'Không đọc được file', e.message || String(e)); }
   };
-
-  // CSV cột theo đúng thứ tự BOM_COLUMNS (trừ id_key tự sinh, nhan_vat_tu/giao_hang mặc định false)
-  const handleImportBOM = async () => {
-    if (!file || !importLsx) return alert('Vui lòng nhập mã LSX và chọn file CSV!');
-    const reader = new FileReader();
-    reader.onload = async (e) => {
-      const lines = e.target.result.split('\n').filter(l => l.trim() !== '');
-      const rows = [];
-      for (let i = 1; i < lines.length; i++) {
-        const c = lines[i].split(',');
-        if (c.length < 16) continue;
-        rows.push({
-          stt: c[0], khgh: c[1], lsx: importLsx, san_pham: c[2], stt_ct: c[3], msct: c[4],
-          ten_chi_tiet: c[5], vat_lieu: c[6], dai: c[7] || null, rong: c[8] || null, day: c[9] || null,
-          hinh_hop: c[10] || null, dn: c[11] || null, dt: c[12] || null, sl_bo: c[13] || null, sl_dh: c[14] || null,
-          khoi_luong: c[15] || null, cong_doan_truoc: c[16] || '', duc_nhom: c[17] || '', cua_vong: c[18] || '',
-          tien: c[19] || '', phay: c[20] || '', nguoi: c[21] || '', nhiet: c[22] || '',
-          cong_doan_sau: c[23] || '', ghi_chu_dmvt: c[24] || '', ghi_chu: c[25] || ''
-        });
-      }
-      const { data, error } = await supabase.rpc('import_bom_rows', { p_rows: rows });
-      if (error) alert('Lỗi khi Import: ' + error.message);
-      else { alert(`Import thành công ${data.inserted} dòng. Thất bại: ${data.failed}`); setIsImportOpen(false); fetchOrders(); }
-    };
-    reader.readAsText(file);
+  const doImport = async () => {
+    setBusy('Đang ghi Supabase…');
+    try {
+      const { data, error } = await supabase.rpc('tiendo_replace', { p_token: token, p_rows: imp.res.rows });
+      if (error) throw new Error(error.message);
+      notify('success', 'Đã nhập tiến độ đơn hàng', (data && data.inserted != null ? data.inserted : imp.res.rows.length) + ' lệnh sản xuất đã được lưu vào Supabase.');
+      setImp(null); await load();
+    } catch (e) { notify('error', 'Nhập thất bại', e.message || String(e)); }
+    setBusy('');
   };
+  const [over, dropProps] = useDropFile(onFile, canImp && !busy);
 
-  if (selectedLsx) {
-    return (
-      <div className="space-y-3">
-        <div className="card p-3 flex items-center gap-3">
-          <button onClick={() => setSelectedLsx(null)} className="btn"><i className="fa-solid fa-arrow-left"></i> Quay lại</button>
-          <span className="font-bold text-slate-700 text-sm">Chi tiết LSX: <span className="text-primary">{selectedLsx}</span></span>
-        </div>
-        <div className="card overflow-auto" style={{ maxHeight: '72vh' }}>
-          <table className="erp">
-            <thead>
-              <tr><th>STT CT</th><th>MSCT</th><th>Tên chi tiết</th><th>SL/ĐH</th><th>Nhận VT</th><th>Giao hàng</th></tr>
-            </thead>
-            <tbody>
-              {details.map(d => (
-                <tr key={d.id}>
-                  <td className="ctr">{d.stt_ct}</td>
-                  <td className="font-semibold">{d.msct}</td>
-                  <td>{d.ten_chi_tiet}</td>
-                  <td className="key ctr">{d.sl_dh}</td>
-                  <td className="ctr">{d.nhan_vat_tu ? '✔' : ''}</td>
-                  <td className="ctr">{d.giao_hang ? '✔' : ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+  return (<>
+    <div className="space-y-3 relative" style={{ minHeight: 'calc(100vh - 120px)' }} {...dropProps}>
+      <div className="card p-3 flex flex-wrap items-center gap-3">
+        <span className="text-xs font-bold text-slate-500">Tìm</span>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="Tìm theo lệnh sản xuất / hạng mục…" className="inp" style={{ width: 320 }} />
+        <span className="text-xs text-slate-500">{rows.length} lệnh sản xuất</span>
+        <div className="ml-auto"></div>
+        {canImp && <button className="btn btn-green" onClick={() => fileRef.current && fileRef.current.click()}><i className="fa-solid fa-file-excel"></i> Nhập Excel</button>}
+        <button className="btn" onClick={() => exportXlsx(TD_COLS, rows, 'Tien-do-don-hang')} disabled={!rows.length}><i className="fa-solid fa-download"></i> Xuất Excel</button>
+        <button className="btn" onClick={load}><i className="fa-solid fa-rotate"></i> Làm mới</button>
+        <input ref={fileRef} type="file" accept=".xlsx,.xlsm,.xls,.csv" style={{ display: 'none' }}
+               onChange={e => { const f = e.target.files[0]; e.target.value = ''; if (f) onFile(f); }} />
       </div>
-    );
-  }
+      {canImp && <p className="text-xs text-gray-400 px-1">Kéo thả file Excel (bảng “Tiến độ tổng hợp đơn hàng”) vào trang này để cập nhật. Hệ thống tự khớp cột theo tên tiêu đề, dữ liệu cũ sẽ được thay bằng dữ liệu trong file.</p>}
 
-  return (
-    <div className="space-y-3">
-      <div className="card p-3 flex items-center gap-3">
-        <span className="text-xs font-bold text-slate-500">{orders.length} lệnh sản xuất</span>
-        <button onClick={fetchOrders} className="btn ml-auto"><i className="fa-solid fa-rotate"></i> Làm mới</button>
-        {can('bom.import') && <button onClick={() => setIsImportOpen(true)} className="btn btn-green"><i className="fa-solid fa-file-csv"></i> Nhập BOM (CSV)</button>}
-      </div>
-      <div className="card overflow-auto" style={{ maxHeight: '72vh' }}>
-        <table className="erp">
-          <thead><tr><th>LSX</th><th>Sản phẩm</th><th>KHGH</th><th>Hành động</th></tr></thead>
-          <tbody>
-            {loading ? <tr><td colSpan="4" className="text-center py-6 text-gray-400">Đang tải…</td></tr> :
-              orders.map(o => (
-                <tr key={o.lsx}>
-                  <td className="key cursor-pointer text-primary" onClick={() => viewDetails(o.lsx)}>{o.lsx}</td>
-                  <td>{o.san_pham}</td>
-                  <td>{o.khgh}</td>
-                  <td><button onClick={() => viewDetails(o.lsx)} className="text-primary hover:text-blue-800 font-semibold text-xs">Xem BOM</button></td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
-
-      {isImportOpen && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white p-6 rounded-2xl w-full max-w-md shadow-2xl">
-            <h2 className="text-lg font-bold mb-4">Nhập BOM từ CSV</h2>
-            <div className="space-y-4">
-              <input type="text" placeholder="Mã LSX" value={importLsx} onChange={e => setImportLsx(e.target.value)} className="inp w-full" />
-              <input type="file" accept=".csv" onChange={e => setFile(e.target.files[0])} className="inp w-full" />
-              <div className="flex justify-end gap-3 mt-6">
-                <button onClick={() => setIsImportOpen(false)} className="btn">Hủy</button>
-                <button onClick={handleImportBOM} className="btn btn-green">Import</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      <FilterTable id="td" cols={TD_COLS} rows={filtered} loading={loading} total={rows.length} maxHeight="72vh" />
+      {over && <DropOverlay />}
     </div>
-  );
+    {imp && <ImportPreview title="Nhập tiến độ đơn hàng từ Excel" imp={imp} busy={busy} okText="Thay dữ liệu cũ"
+              warn="Toàn bộ tiến độ hiện có sẽ được thay bằng dữ liệu trong file." onOk={doImport} onCancel={() => setImp(null)} />}
+  </>);
 }
 
 // =====================================================================
@@ -2931,11 +3200,11 @@ function BomDonHang({ active }) {
 // Danh sách quyền: [mã quyền, tên hiển thị]. Muốn thêm quyền mới chỉ cần thêm vào đây rồi dùng can('mã quyền') ở chỗ cần chặn.
 const PERM_GROUPS = [
   { title: 'Xem menu', items: [
-    ['menu.dashboard', 'Dashboard'], ['menu.bom', 'Tiến độ chung'], ['menu.tracuu', 'Tổng hợp đơn hàng'],
+    ['menu.dashboard', 'Dashboard'], ['menu.bom', 'Tiến độ đơn hàng'], ['menu.tracuu', 'Tổng hợp đơn hàng'],
     ['menu.indonhang', 'In đơn hàng'], ['menu.kanban', 'Kanban'], ['menu.bomkanban', 'BOM Kanban'],
     ['menu.bomdonhang', 'BOM Đơn hàng'], ['menu.phanquyen', 'Phân quyền (chỉ xem)'] ] },
-  { title: 'Tiến độ chung', items: [['bom.import', 'Nhập BOM từ CSV']] },
-  { title: 'Tổng hợp đơn hàng', items: [['tracuu.tick', 'Tick Nhận vật tư / Giao hàng / GCN']] },
+  { title: 'Tiến độ đơn hàng', items: [['tiendo.import', 'Nhập tiến độ từ Excel (kéo thả)']] },
+  { title: 'Tổng hợp đơn hàng', items: [['tracuu.tick', 'Tick Nhận vật tư / Giao hàng / GCN'], ['tracuu.import', 'Nhập dữ liệu từ Excel (kéo thả)']] },
   { title: 'In đơn hàng', items: [['indonhang.print', 'In đơn hàng'], ['indonhang.bus', 'Dùng mẫu In ĐH BUS']] },
   { title: 'Kanban', items: [['kanban.print', 'In tem Kanban']] },
   { title: 'BOM Kanban', items: [
@@ -3125,7 +3394,7 @@ const MENU = [
   { group: 'Tổng hợp', icon: 'fa-chart-pie', items: [
     { id: 'dashboard', name: 'Dashboard', icon: 'fa-gauge-high' } ] },
   { group: 'Theo dõi sản xuất', icon: 'fa-chart-column', items: [
-    { id: 'bom', name: 'Tiến độ chung', icon: 'fa-cubes' },
+    { id: 'bom', name: 'Tiến độ đơn hàng', icon: 'fa-cubes' },
     { id: 'tracuu', name: 'Tổng hợp đơn hàng', icon: 'fa-table-list', badge: 'tracuu' } ] },
   { group: 'Đơn hàng', icon: 'fa-clipboard-list', items: [
     { id: 'indonhang', name: 'In đơn hàng', icon: 'fa-print' },
@@ -3136,7 +3405,7 @@ const MENU = [
     { id: 'phanquyen', name: 'Phân quyền', icon: 'fa-user-shield' } ] },
 ];
 
-function Sidebar({ menu, currentPage, setCurrentPage, collapsed, setCollapsed, counts }) {
+function Sidebar({ menu, currentPage, setCurrentPage, collapsed, setCollapsed, counts, onLogout }) {
   return (
     <aside className={'sb h-full bg-white border-r border-gray-200 flex flex-col ' + (collapsed ? 'collapsed' : '')}>
       {/* Logo: cao đúng 56px bằng thanh header (h-14) nên hai đường kẻ ngang thẳng hàng, thu gọn vẫn thấy logo */}
@@ -3161,6 +3430,11 @@ function Sidebar({ menu, currentPage, setCurrentPage, collapsed, setCollapsed, c
           </div>
         ))}
       </nav>
+
+      <button className="sb-logout" onClick={onLogout} title="Đăng xuất">
+        <i className="fa-solid fa-right-from-bracket"></i>
+        {!collapsed && <span>Đăng xuất</span>}
+      </button>
 
       {/* Nút thu / mở sidebar ở cuối */}
       <button className="sb-toggle" onClick={() => setCollapsed(!collapsed)} title={collapsed ? 'Mở rộng menu' : 'Thu gọn menu'}>
@@ -3205,12 +3479,11 @@ function MainApp() {
   return (
     <div className="app-shell flex h-screen overflow-hidden">
       <ToastHost />
-      <div className="no-print h-screen"><Sidebar menu={menu} currentPage={currentPage} setCurrentPage={setCurrentPage} collapsed={collapsed} setCollapsed={setCollapsed} counts={counts} /></div>
+      <div className="no-print h-screen"><Sidebar menu={menu} currentPage={currentPage} setCurrentPage={setCurrentPage} collapsed={collapsed} setCollapsed={setCollapsed} counts={counts} onLogout={logout} /></div>
       <div className="app-col flex-1 flex flex-col min-w-0 h-screen">
         <header className="no-print h-14 flex items-center justify-end gap-3 px-6 bg-white border-b border-gray-200">
-          <span className="text-xs font-semibold text-slate-600"><i className="fa-solid fa-user mr-1.5 text-primary"></i>{user.full_name || user.username}{user.role === 'admin' ? ' · Admin' : ''}</span>
+          <span className="text-xs font-semibold text-slate-600"><i className="fa-solid fa-user mr-1.5 text-primary"></i>{user.full_name || user.username}{user.role === 'admin' && (user.full_name || user.username).trim().toLowerCase() !== 'admin' ? ' · Admin' : ''}</span>
           <button className="btn" onClick={() => location.reload()}><i className="fa-solid fa-rotate"></i> Làm mới</button>
-          <button className="btn" onClick={logout}><i className="fa-solid fa-right-from-bracket"></i> Đăng xuất</button>
         </header>
         <main className="app-main flex-1 overflow-y-auto p-5">
           {!firstId && <div className="card p-8 text-center text-gray-500">Tài khoản của bạn chưa được cấp quyền nào. Vui lòng liên hệ Admin.</div>}
